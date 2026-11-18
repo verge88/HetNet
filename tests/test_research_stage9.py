@@ -58,10 +58,13 @@ class TailScoreTests(unittest.TestCase):
             {"ground_truth": False, "detected": False, "abstained": False},
         ]
         summary = _metrics(records)
-        self.assertEqual(summary["fn"], 1)
-        self.assertEqual(summary["tn"], 2)
+        self.assertEqual(summary["fn"], 0)
+        self.assertEqual(summary["tn"], 1)
+        self.assertEqual(summary["decided_samples"], 1)
         self.assertEqual(summary["abstained"], 2)
         self.assertEqual(summary["abstained_positive"], 1)
+        self.assertIsNone(summary["recall"])
+        self.assertEqual(summary["recall_with_abstentions_as_misses"], 0)
         self.assertAlmostEqual(summary["coverage"], 1/3)
 
 
@@ -131,7 +134,9 @@ class HoldoutComparisonTests(unittest.TestCase):
             self.assertEqual(summary["negative_samples"], 10)
             self.assertEqual(
                 summary["tp"] + summary["fp"] + summary["fn"] + summary["tn"],
-                summary["samples"])
+                summary["decided_samples"])
+            self.assertEqual(summary["decided_samples"] + summary["abstained"],
+                             summary["samples"])
             self.assertTrue(0 <= summary["coverage"] <= 1)
         self.assertEqual(
             set(report["training"]["training_source_ids"]) &
