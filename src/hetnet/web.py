@@ -42,6 +42,8 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <label>Узлы с подделкой отчёта<input id="reportnodes" placeholder="msc2,amf5" value=""></label>
 <label>Общий сбой зоны<select id="sharedzone"><option value="none">Нет</option><option value="epc_outage">EPC недоступна</option><option value="epc_5gc_outage">EPC + 5GC недоступны</option><option value="epc_corrupt">EPC искажает</option><option value="epc_5gc_collude">EPC + 5GC в сговоре</option><option value="all_outage">Все недоступны</option></select></label>
 <label>Вероятность общего сбоя, %<input id="sharedprob" type="number" min="0" max="100" step="5" value="100"></label>
+<label>Пропуски событий датчиком, %<input id="capturemiss" type="number" min="0" max="50" step="1" value="0"></label>
+<label>Допуск кворума, событий<input id="countdelta" type="number" min="0" max="100" step="1" value="0"></label>
 <label style="align-self:center">Синтетические атаки<input id="attack" type="checkbox" checked></label>
 <button type="submit">Запустить моделирование</button></form></div>
 <div class="grid" id="metrics"></div>
@@ -55,6 +57,10 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <p>Симптомы агрегируются только по заново проверенным подписям наблюдателей и общей эпохе. Несогласие большинства не является доказательством виновности датчика.</p>
 <div id="domain-summary" class="small"></div>
 <div class="scroll"><table><thead><tr><th>Эпоха, мс</th><th>Отсутствующие домены</th><th>Нет кворума (узлы)</th><th>Общие признаки</th></tr></thead><tbody id="zone-events"></tbody></table></div></section>
+<section class="panel"><h3>Зональные статистические признаки КИЕ</h3>
+<p>Медиана, MAD, z-оценка и ранги строятся по проверенным отчётам и кворумам. Одна статистика не подтверждает факт атаки.</p>
+<div id="zonal-summary" class="small"></div>
+<div class="scroll"><table><thead><tr><th>Узел / поколение</th><th>Избыток несогласия</th><th>Отклонение от медианы</th><th>z-оценка</th><th>Ранг</th><th>Кворум</th></tr></thead><tbody id="zonal-nodes"></tbody></table></div></section>
 <section class="panel"><h3>Журнал сигнальных событий</h3><div class="scroll"><table>
 <thead><tr><th>мс</th><th>Поколение</th><th>Протокол</th><th>Операция</th><th>Источник → Адресат</th><th>Результат</th></tr></thead>
 <tbody id="events"></tbody></table></div></section>
@@ -84,7 +90,17 @@ const s=data.summary,m=$('metrics');m.replaceChildren();
 [['Сообщений',s.total_messages],['Доставлено',s.delivered],['КИЕ доставлено',s.cu_delivered+'/'+s.cu_observations],['Тревог',s.alerts]]
 .forEach(([name,value])=>{const c=add('div',m);c.className='metric';
 const k=add('span',c,name);k.className='small';add('strong',c,String(value))});
-draw(data);const z=data.domain_evidence||{}, zs=z.summary||{};
+draw(data);const zf=data.zonal_evidence||{}, ze=zf.epochs||[];
+const last=ze.length?ze[ze.length-1]:null;
+const zsum=zf.summary||{};
+$('zonal-summary').textContent='Подтверждённых признаков: '+(zsum.node_features||0)+'; контрольных периодов с достаточными данными: '+(zsum.epochs_with_sufficient_peers||0)+'; последний период: '+(last?last.time_ms+' мс, '+last.valid_nodes+' узлов':'нет');
+const zn=$('zonal-nodes');zn.replaceChildren();
+(zf.features||[]).filter(f=>last&&f.time_ms===last.time_ms).sort((a,b)=>a.zone_rank_desc-b.zone_rank_desc||a.node.localeCompare(b.node)).forEach(f=>{
+const tr=add('tr',zn);
+[f.node+' / '+f.generation,f.excess_ratio.toFixed(3),f.delta_from_zone_median.toFixed(3),f.zone_zscore.toFixed(2),f.zone_rank_desc,f.quorum_support+'/3'].forEach(v=>add('td',tr,String(v)));
+});
+if(!zn.childElementCount){const tr=add('tr',zn);add('td',tr,'Недостаточно проверенных наблюдений для статистики зоны');}
+const z=data.domain_evidence||{}, zs=z.summary||{};
 $('domain-summary').textContent='Эпох с общей потерей: '+(zs.epochs_with_shared_missing||0)+'; без межузлового кворума: '+(zs.epochs_with_quorum_loss||0)+'; общие несовпадающие голоса: '+(zs.epochs_with_shared_outlier||0);
 const zbody=$('zone-events');zbody.replaceChildren();
 (z.epochs||[]).filter(e=>e.patterns.length||e.cross_node_quorum_loss).slice(-12).forEach(e=>{
@@ -122,6 +138,8 @@ nodecase:$('nodecase').value,observercase:$('observercase').value,
 observerloss:String(Number($('observerloss').value)/100),
 reportnodes:$('reportnodes').value,sharedzone:$('sharedzone').value,
 sharedprob:String(Number($('sharedprob').value)/100),
+capturemiss:String(Number($('capturemiss').value)/100),
+countdelta:$('countdelta').value,
 attacks:$('attack').checked?'1':'0'});
 const res=await fetch('/api/run?'+p.toString());const payload=await res.json();
 if(!res.ok)throw new Error(payload.error||'HTTP '+res.status);render(payload)}
@@ -161,6 +179,8 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                         n.strip() for n in params.get("reportnodes", [""])[0].split(",")))),
                     shared_zone_case=params.get("sharedzone", ["none"])[0],
                     shared_zone_probability=float(params.get("sharedprob", ["1"])[0]),
+                    observer_capture_miss=float(params.get("capturemiss", ["0"])[0]),
+                    quorum_max_count_delta=number("countdelta", "0"),
                     duration_s=duration,
                     subscribers=subscribers,
                     seed=number("seed", "42"),
