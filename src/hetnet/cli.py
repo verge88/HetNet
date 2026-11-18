@@ -20,6 +20,7 @@ from .external_aggregates import (run_external_eval, load_dataset,
                                   source_summary)
 from .zonal_detection import heldout_comparison
 from .labeled_aggregates import run_labeled_eval, load_labeled, audit_labeled
+from .temporal_episodes import run_temporal_eval, load_episodic, audit_episodic
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -160,6 +161,15 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    episode_audit = commands.add_parser(
+        "episode-audit", help="Validate a privacy-restricted temporal annotated source")
+    episode_audit.add_argument("--input", type=Path, required=True)
+    episode_eval = commands.add_parser(
+        "episode-eval", help="Causal unknown-onset CU episode evaluation on heldout lineages")
+    episode_eval.add_argument("--train", type=Path, nargs="+", required=True)
+    episode_eval.add_argument("--holdout", type=Path, nargs="+", required=True)
+    episode_eval.add_argument("--output", type=Path,
+                              default=Path("results/episode-eval"))
     labeled_audit = commands.add_parser(
         "labeled-audit", help="Check privacy-minimized labeled CU aggregate schema")
     labeled_audit.add_argument("--input", type=Path, required=True)
@@ -317,6 +327,23 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "episode-audit":
+        try:
+            summary = audit_episodic(load_episodic(args.input))
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    elif args.command == "episode-eval":
+        try:
+            report = run_temporal_eval(args.train, args.holdout)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "episode_comparison.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(report["overall"], ensure_ascii=False, indent=2))
+        print("Exported onset-agnostic episode comparison to", args.output.resolve())
     elif args.command == "labeled-audit":
         try:
             summary = audit_labeled(load_labeled(args.input))
