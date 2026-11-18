@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hetnet-unified"
+version = "0.1.0"
+description = "Deterministic 2G-5G converged mobile signaling research simulator"
+requires-python = ">=3.10"
+authors = [{name = "HetNet contributors"}]
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+hetnet = "hetnet.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
