@@ -104,3 +104,14 @@ jobs:
           name: hetnet-stage8-aggregate-holdout
           path: results/stage8/
           if-no-files-found: error
+      - name: Stage 9 synthetic source-disjoint zonal detector comparison
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet zonal-compare --duration 18 --subscribers 8 --train-start-seed 21 --train-runs 4 --test-start-seed 42 --test-runs 4 --output results/stage9/heldout
+      - name: Archive stage 9 zonal detector comparison
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage9-source-heldout-detectors
+          path: results/stage9/
+          if-no-files-found: error
