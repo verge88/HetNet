@@ -43,3 +43,20 @@ python -m unittest discover -s tests -v
 ## Следующие этапы для расширенного нормативного соответствия
 
 Для испытаний на уровне реального протокола потребуются отдельные ASN.1 BER кодеки MAP/TCAP/SCCP, Diameter AVP и транспорт (SCTP/TLS/IPsec), SIP transaction timers/IMS AKA, полноценный GTPv2-C, NGAP/NAS/RRC и 5G SBI JSON/OpenAPI/HTTP/2 с TLS/OAuth2/SEPP/N32, а также проверка конкретных версий 3GPP Release и TTCN-3/interop тесты. Такие функции **не** реализованы и не имитируются как будто они проверены.
+
+## Этап 2 — расширенная имитация и научная воспроизводимость
+
+- Пер-узловые потоки в пяти сигнальных доменах с суточной гармоникой, AR(1), семплированием Пуассона и контролем интенсивности через `--traffic-scale`.
+- Ограниченная пропускная способность и буферы звеньев, причинная обработка пакетов hop-by-hop, задержки и состояния `CONGESTED`/ `LOST`.
+- Состояния процедур 2G/3G, LTE, IMS и 5G с обязательными предшественниками, сопоставлением ответов и тайм-аутами.
+- Агрегированные `observations.csv` по окнам ОКС-7 30 с, Diameter 15 с, SIP 20 с; GTP/5G — расширение.
+- Экспериментальные серии seed 42–51 с отдельной оценкой message-level precision, recall, FPR, F1 и выборочного стандартного отклонения.
+- Таблица конкретных редакций стандартов **3GPP Release 18**: [standards/release18.json](standards/release18.json).
+
+```bash
+python -m hetnet run --duration 60 --subscribers 16 --seed 42 --traffic-scale 2 --output results/run
+python -m hetnet experiment --duration 18 --subscribers 8 --start-seed 42 --runs 10 --output results/experiment
+python -m unittest discover -s tests -v
+```
+
+Полные допущения и ограничения: **[docs/validation-stage2.md](docs/validation-stage2.md)**. Генератор и его параметры являются новыми синтетическими допущениями: **это не** воспроизведение исходных 24-часовых наборов из диссертации и **не** сертифицированная протокольная реализация.
