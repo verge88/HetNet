@@ -11,6 +11,7 @@ from .simulator import RULES, Scenario, Simulator
 from .experiment import export_experiment, run_multiseed
 from .calibration import calibrate_file, load_rates
 from .episode import run_validation
+from .stress import benign_stress
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
 
@@ -84,6 +85,15 @@ def main(argv: list[str] | None = None) -> None:
     validation.add_argument("--test-start-seed", type=int, default=42)
     validation.add_argument("--test-runs", type=int, default=10)
     validation.add_argument("--output", type=Path, default=Path("results/validation"))
+    stress = commands.add_parser(
+        "stress", help="Benign load/loss domain-shift false-positive experiment")
+    stress.add_argument("--duration", type=int, default=18)
+    stress.add_argument("--subscribers", type=int, default=8)
+    stress.add_argument("--traffic-profile", type=Path)
+    stress.add_argument("--scales", default="1,8,20")
+    stress.add_argument("--loss-rates", default="0,0.03,0.1")
+    stress.add_argument("--test-runs", type=int, default=3)
+    stress.add_argument("--output", type=Path, default=Path("results/stress"))
     calibration = commands.add_parser(
         "calibrate", help="Calculate rates from aggregate non-PII counts")
     calibration.add_argument("--input", type=Path, required=True)
@@ -114,6 +124,27 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError, DecodeError) as error:
             parser.error(str(error))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "stress":
+        if not 1 <= args.test_runs <= 20:
+            parser.error("--test-runs must be 1..20")
+        try:
+            scales = tuple(float(v) for v in args.scales.split(","))
+            losses = tuple(float(v) for v in args.loss_rates.split(","))
+            rates = load_rates(args.traffic_profile) if args.traffic_profile else {}
+            result = benign_stress(
+                duration_s=args.duration, subscribers=args.subscribers,
+                traffic_scales=scales, loss_rates=losses,
+                test_seeds=tuple(range(42, 42 + args.test_runs)),
+                traffic_rates=rates,
+            )
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "stress.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
+        print("Exported benign stress to", args.output.resolve())
     elif args.command == "calibrate":
         try:
             result = calibrate_file(args.input, args.output)
