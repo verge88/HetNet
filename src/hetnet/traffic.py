@@ -63,11 +63,24 @@ def poisson(rng: random.Random, expectation: float) -> int:
 class TrafficGenerator:
     def __init__(self, seed: int, scale: float = 1.0,
                  amplitude: float = 0.35, phi: float = 0.7,
-                 innovation_sigma: float = 0.12, peak_hour: float = 18.0) -> None:
+                 innovation_sigma: float = 0.12, peak_hour: float = 18.0,
+                 rates: dict[str, float] | None = None) -> None:
         if not (0 <= scale <= 50 and 0 <= amplitude < 1 and
                 0 <= phi < 1 and innovation_sigma >= 0 and
                 0 <= peak_hour < 24):
             raise ValueError("Invalid traffic parameters")
+        if rates is None:
+            rates = {}
+        if (not isinstance(rates, dict)
+                or any(key not in {p.domain for p in PROFILES}
+                       or type(value) not in (int, float)
+                       or not math.isfinite(value) or not 0 <= value <= 1000
+                       for key, value in rates.items())):
+            raise ValueError("Invalid per-domain calibrated traffic rates")
+        self.profiles = tuple(TrafficProfile(
+            p.domain, p.generation, p.operation, p.source, p.target,
+            float(rates.get(p.domain, p.baseline_per_second))
+        ) for p in PROFILES)
         self.rng = random.Random(seed ^ 0x71AAB57)
         self.scale = scale
         self.amplitude = amplitude
@@ -84,7 +97,7 @@ class TrafficGenerator:
         if subscribers <= 0 or duration_s < 0:
             raise ValueError("invalid simulation length or subscriber count")
         for second in range(duration_s):
-            for profile in PROFILES:
+            for profile in self.profiles:
                 ar = self.phi * self._ar[profile.domain] + (
                     self.innovation_sigma * self.rng.gauss(0, 1))
                 self._ar[profile.domain] = ar
