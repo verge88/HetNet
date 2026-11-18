@@ -1,7 +1,7 @@
 name: Tests
 on:
   push:
-    branches: [main, feat/unified-signaling-2g-5g]
+    branches: [main, 'feat/**']
   pull_request:
 jobs:
   test:
