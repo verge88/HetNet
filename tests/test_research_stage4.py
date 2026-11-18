@@ -53,6 +53,18 @@ class EvidenceUnitTests(unittest.TestCase):
         self.assertEqual(result["max_missing_streak"], 3)
         self.assertEqual(result["authenticated_mismatches"], 0)
 
+    def test_matching_report_with_some_missing_cu_is_not_compromise(self) -> None:
+        observed = [
+            cu("sgsn3", 100, consistent=True),
+            cu("sgsn3", 200, delivered=False, mac=None,
+               consistent=None, reported=None, observed=None),
+            cu("sgsn3", 300, consistent=True),
+        ]
+        finding = inspect_cu_events(observed)["nodes"][0]
+        self.assertEqual(finding["classification"], "consistent_with_loss")
+        self.assertEqual(finding["authenticated_matches"], 2)
+        self.assertEqual(finding["missing"], 1)
+
     def test_missing_breaks_discrepancy_confirmation(self) -> None:
         result = inspect_cu_events([
             cu("dra", 100, consistent=False, reported=7, observed=5),
