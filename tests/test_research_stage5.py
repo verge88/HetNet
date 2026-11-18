@@ -55,8 +55,8 @@ class QuorumUnitTests(unittest.TestCase):
         result = consensus_from_votes(
             [good, tampered, replay], KEY, NODE, NONCE, TIME)
         self.assertFalse(result["quorum"])
-        self.assertEqual(sorted(result["invalid_observers"]),
-                         ["tap-epc", "tap-5gc"])
+        self.assertEqual(set(result["invalid_observers"]),
+                         {"tap-epc", "tap-5gc"})
 
     def test_stale_and_cross_domain_rejected(self):
         old = signed_vote("tap-legacy", {"a": 1}, at_ms=TIME - 2000)
