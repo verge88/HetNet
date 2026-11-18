@@ -571,7 +571,12 @@ class Simulator:
         Every other node has three normally independent laboratory witnesses.
         """
         votes: list[dict[str, Any]] = []
-        case = self.scenario.observer_case if node == "dra" else "none"
+        # Align malicious observer behavior with the CU report compromise
+        # window, allowing clean pre-attack evidence and a meaningful
+        # collusion/concealment test.
+        case = (self.scenario.observer_case
+                if node == "dra" and now >= int(self.scenario.duration_s * 720)
+                else "none")
         for observer, domain in OBSERVER_DOMAINS.items():
             delivered = self._observer_rng.random() >= self.scenario.observer_loss_rate
             if case in ("outage", "mixed") and observer == "tap-5gc":
