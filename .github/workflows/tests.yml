@@ -1,7 +1,7 @@
 name: Tests
 on:
   push:
-    branches: [main, feat/unified-signaling-2g-5g]
+    branches: [main, 'feat/**']
   pull_request:
 jobs:
   test:
@@ -114,4 +114,16 @@ jobs:
         with:
           name: hetnet-stage9-source-heldout-detectors
           path: results/stage9/
+          if-no-files-found: error
+      - name: Stage 10 annotated aggregate source and lineage holdout
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet labeled-audit --input examples/labeled/lab_clean_alpha.json
+          python -m hetnet labeled-eval --train examples/labeled/lab_clean_alpha.json examples/labeled/lab_clean_beta.json --holdout examples/labeled/lab_holdout_gamma.json examples/labeled/lab_holdout_delta.json --output results/stage10/labeled
+      - name: Archive stage 10 source-heldout aggregate metrics only
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage10-labeled-aggregate
+          path: results/stage10/
           if-no-files-found: error
