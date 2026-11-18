@@ -186,24 +186,41 @@ def fit_zonal_thresholds(
 
 
 def _metrics(records: list[dict]) -> dict[str, Any]:
-    scored = rates(records)
-    missing = sum(row["abstained"] for row in records)
-    positives = sum(row["ground_truth"] for row in records)
-    negatives = len(records) - positives
+    """Return selective metrics without turning abstentions into true negatives.
+
+    Confusion counts cover only *decided* examples. Abstentions are separately
+    counted; all-positive recall treats every abstained attack as missed.
+    """
+    decided = [row for row in records if not row["abstained"]]
+    scored = rates(decided)
+    tp, fp, fn, tn = (scored[key] for key in ("tp", "fp", "fn", "tn"))
+    pos = sum(row["ground_truth"] for row in records)
+    neg = len(records) - pos
+    withheld_pos = sum(row["abstained"] and row["ground_truth"]
+                       for row in records)
+    withheld_neg = sum(row["abstained"] and not row["ground_truth"]
+                       for row in records)
+    precision = tp / (tp + fp) if tp + fp else None
+    recall = tp / (tp + fn) if tp + fn else None
+    fpr = fp / (fp + tn) if fp + tn else None
+    f1 = (2 * precision * recall / (precision + recall)
+          if precision is not None and recall is not None
+          and precision + recall > 0 else None)
     return {
-        **scored,
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "precision": precision, "recall": recall, "fpr": fpr, "f1": f1,
         "samples": len(records),
-        "positive_samples": positives,
-        "negative_samples": negatives,
-        "abstained": missing,
-        "abstained_positive": sum(row["abstained"] and row["ground_truth"]
-                                  for row in records),
-        "abstained_negative": sum(row["abstained"] and not row["ground_truth"]
-                                  for row in records),
-        "coverage": 1 - missing / len(records) if records else None,
-        "scoring_note": (
-            "Abstentions conservatively count as not detected in confusion "
-            "matrix; coverage reported separately."
+        "decided_samples": len(decided),
+        "positive_samples": pos, "negative_samples": neg,
+        "abstained": withheld_pos + withheld_neg,
+        "abstained_positive": withheld_pos,
+        "abstained_negative": withheld_neg,
+        "coverage": len(decided) / len(records) if records else None,
+        "recall_with_abstentions_as_misses": tp / pos if pos else None,
+        "interpretation": (
+            "TP/FP/FN/TN and precision/recall/FPR use DECIDED examples only; "
+            "undefined denominators are null. Abstentions are not TN. "
+            "Total-positive recall penalizes abstained attacks separately."
         ),
     }
 
@@ -292,9 +309,10 @@ def heldout_comparison(
     # correlated, so no unqualified confidence interval or p-value.
     for item in overall:
         detector = item["detector"]
-        seed_recalls = [rates([
+        seed_recalls = [_metrics([
             row for row in rows if row["detector"] == detector
-            and row["seed"] == seed])["recall"] for seed in test_seeds]
+            and row["seed"] == seed])["recall_with_abstentions_as_misses"]
+                        for seed in test_seeds]
         item["per_seed_recall_mean"] = mean(seed_recalls)
         item["per_seed_recall_sample_sd"] = (
             stdev(seed_recalls) if len(seed_recalls) > 1 else 0.0)
@@ -313,7 +331,7 @@ def heldout_comparison(
             "Differences of source_id and seed cannot prove physical independence",
             "Known 72%-of-horizon attack onset informs predeclared final-quarter scoring",
             "Zonal scores use the same signed CU/observer inputs as the baseline",
-            "Tail abstentions counted as negative for recall; coverage separately reported",
+            "Abstentions excluded from decided confusion counts; coverage and conservative recall separately reported",
             "Two colluding observers can fabricate a majority and fool all rules",
             "No external attack labels, ML generalization or 3GPP conformance implied",
             "Repeated observations across scenarios and seeds are not independent sites",
