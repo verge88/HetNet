@@ -94,7 +94,8 @@ class WireChecks(unittest.TestCase):
         msg = sip_packet()
         info = parse_sip(msg)
         self.assertEqual(info["method"], "INVITE")
-        self.assertEqual(info["call_id"], "test-call-01")
+        self.assertEqual(len(info["call_id_sha256"]), 64)
+        self.assertNotIn("call_id", info)
         self.assertEqual(info["body_length"], 0)
         response = msg.replace(
             b"INVITE sip:bob@example.org SIP/2.0", b"SIP/2.0 200 OK"
