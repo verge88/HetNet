@@ -227,6 +227,7 @@ class Simulator:
         self._acked_invites: set[str] = set()
         self._nf_profiles: dict[str, tuple[str, str]] = {}
         self._compromised: set[str] = set()
+        self._wire_tampered: set[str] = set()
         self._cu_key = hashlib.sha256(("hetnet-cu-test:" + str(self.scenario.seed)).encode()).digest()
         self._executed = False
 
@@ -441,18 +442,29 @@ class Simulator:
                          "scscf", "ue-0004", "attack-sip-" + str(n),
                          "5G", attack=True)
 
-    def _sign(self, counts: dict[str, int]) -> str:
-        data = json.dumps(counts, sort_keys=True, separators=(",", ":")).encode()
-        return hmac.new(self._cu_key, data, hashlib.sha256).hexdigest()
+    def _sign(self, node: str, nonce: str, counts: dict[str, int]) -> str:
+        # Simulation-only per-node key and challenge nonce; not production PKI.
+        data = json.dumps({"node": node, "nonce": nonce, "counts": counts},
+                          sort_keys=True, separators=(",", ":")).encode()
+        node_key = hmac.new(self._cu_key, node.encode(), hashlib.sha256).digest()
+        return hmac.new(node_key, data, hashlib.sha256).hexdigest()
 
     def _poll(self, now: int) -> None:
         for node in ("msc2", "sgsn3", "mme4", "dra", "pcscf", "amf5"):
             counts = dict(self._node_counts[node])
             reported = dict(counts)
+            nonce = "cu-" + str(now)
+            signature = self._sign(node, nonce, reported)
             if node in self._compromised:
+                # Compromised signer can forge a valid MAC, but not the
+                # independent observation maintained outside the node.
                 reported["fabricated"] = reported.get("fabricated", 0) + 5
-            signature = self._sign(reported)
-            verified = hmac.compare_digest(signature, self._sign(reported))
+                signature = self._sign(node, nonce, reported)
+            elif node in self._wire_tampered:
+                # An on-path actor can change bytes but cannot re-sign.
+                reported["fabricated"] = reported.get("fabricated", 0) + 1
+            verified = hmac.compare_digest(
+                signature, self._sign(node, nonce, reported))
             consistent = (reported == dict(self._independent_counts[node]))
             outcome = "MATCH" if verified and consistent else "MISMATCH"
             if not consistent:
@@ -498,6 +510,7 @@ class Simulator:
         if self.scenario.inject_attacks:
             self._push(int(self.scenario.duration_s * 650), "inject", None)
             self._push(int(self.scenario.duration_s * 720), "compromise", "dra")
+            self._push(int(self.scenario.duration_s * 740), "wire_tamper", "msc2")
 
     def run(self) -> dict[str, Any]:
         if self._executed:
@@ -523,6 +536,8 @@ class Simulator:
                 self._inject(now)
             elif kind == "compromise":
                 self._compromised.add(item)
+            elif kind == "wire_tamper":
+                self._wire_tampered.add(item)
 
         for corr in sorted(self._completed_invites - self._acked_invites):
             self._alert(horizon, "sip_ack_deficit", "pcscf",
