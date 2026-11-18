@@ -68,6 +68,7 @@ class HetNetTests(unittest.TestCase):
         self.assertIn("unauthorized_operation", categories)
         self.assertIn("signaling_rate_spike", categories)
         self.assertIn("cu_discrepancy", categories)
+        self.assertIn("cu_integrity", categories)
         self.assertGreaterEqual(result["summary"]["rejected"], 3)
 
     def test_nf_profile_lifecycle_validation(self) -> None:
