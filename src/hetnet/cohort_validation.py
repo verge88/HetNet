@@ -24,8 +24,7 @@ COHORTS: dict[str, tuple[str, ...]] = {
 
 UNCERTAIN = frozenset({
     "observer_quorum_unavailable", "unconfirmed_divergence",
-    "insufficient_evidence", "consistent_with_observer_gaps",
-    "telemetry_degraded",
+    "insufficient_evidence", "telemetry_degraded",
 })
 
 
