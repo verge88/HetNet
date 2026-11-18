@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from collections import Counter
 
 from .consensus import consensus_from_votes, count_distance
+from .attestation import verify_cu_report
 from typing import Any
 
 
@@ -37,6 +38,7 @@ class _NodeState:
 def inspect_cu_events(events: list[dict[str, Any]],
                       min_confirmations: int = 2,
                       *, observer_root_key: bytes | None = None,
+                      cu_root_key: bytes | None = None,
                       max_count_delta: int = 0) -> dict[str, Any]:
     """Classify nodes without consulting injection flags or security alerts.
 
@@ -80,7 +82,13 @@ def inspect_cu_events(events: list[dict[str, Any]],
             state.observer_outliers.update(vote_quorum.get("outlier_observers", []))
             state.observer_invalid.update(vote_quorum.get("invalid_observers", []))
             state.observer_missing.update(vote_quorum.get("missing_observers", []))
-        if detail.get("mac_valid") is not True:
+        if cu_root_key is not None:
+            valid_report = verify_cu_report(
+                cu_root_key, node, event["correlation_id"],
+                detail.get("reported_counts"), detail.get("report_signature"))
+        else:
+            valid_report = detail.get("mac_valid") is True
+        if not valid_report:
             state.invalid_macs += 1
             state.mismatch_streak = 0
             state.evidence_correlation_ids.append(event["correlation_id"])
