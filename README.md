@@ -101,3 +101,19 @@ python -m hetnet stress --duration 18 --subscribers 8 --traffic-profile results/
 подписанного отчёта и независимого наблюдения остаётся подозрением,
 а не доказательством взлома. Совместимость со стеком реального
 оператора по-прежнему не заявляется.
+
+## Этап 5 — наблюдатели из трёх независимых доменов
+
+Для каждого опроса КИЕ моделируются три раздельно подписанных голоса наблюдения Legacy/EPC/5GC. Сравнение отчёта с независимыми счётчиками проводится только при проверенном большинстве **2 из 3**. Дубликаты, неверные подписи и устаревшие голоса не учитываются. Недостаток кворума означает **неопределённость**, а не доказательство взлома.
+
+```bash
+python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case none --observer-case one_faulty --output results/observer-single
+python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case report --observer-case two_colluding --output results/collusion
+python -m hetnet zone-study --duration 18 --subscribers 8 --runs 6 --observer-loss-rates 0,0.2,0.45 --output results/zone-study
+```
+
+Сценарии `--observer-case`: `none`, `one_faulty`, `two_colluding`, `outage`, `mixed`, `bad_mac`, `stale`. В `run` доступен параметр `--observer-loss-rate` (0…1). Веб-панель показывает доступность кворума, отклонённые/отсутствующие голоса и несогласное меньшинство; `node_evidence.json` и `zone_study.json` пригодны для повторной обработки.
+
+**[Методика 5-го этапа](docs/validation-stage5.md)** · **[Результаты и ограничения](docs/results-stage5.md)**.
+
+**Важно:** при сговоре двух из трёх наблюдателей большинство может обвинить честный узел и пропустить подделку. Это демонстрируемое ограничение модели, а не успешно отражённая атака. Административные домены и подписи — синтетические исследовательские конструкции, а не стандартный механизм 3GPP.
