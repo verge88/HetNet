@@ -39,6 +39,9 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <label>Сценарий КИЕ<select id="nodecase"><option value="auto">Авто</option><option value="none">Норма</option><option value="report">Отчёт узла</option><option value="tamper">Изменение в пути</option><option value="both">Оба</option></select></label>
 <label>Наблюдатели<select id="observercase"><option value="none">3 исправны</option><option value="one_faulty">1 подделывает</option><option value="two_colluding">2 в сговоре</option><option value="outage">Нет кворума</option><option value="mixed">Подделка + потеря</option><option value="bad_mac">Повреждён MAC</option><option value="stale">Устаревшая подпись</option></select></label>
 <label>Потери голосов, %<input id="observerloss" type="number" min="0" max="100" step="5" value="0"></label>
+<label>Узлы с подделкой отчёта<input id="reportnodes" placeholder="msc2,amf5" value=""></label>
+<label>Общий сбой зоны<select id="sharedzone"><option value="none">Нет</option><option value="epc_outage">EPC недоступна</option><option value="epc_5gc_outage">EPC + 5GC недоступны</option><option value="epc_corrupt">EPC искажает</option><option value="epc_5gc_collude">EPC + 5GC в сговоре</option><option value="all_outage">Все недоступны</option></select></label>
+<label>Вероятность общего сбоя, %<input id="sharedprob" type="number" min="0" max="100" step="5" value="100"></label>
 <label style="align-self:center">Синтетические атаки<input id="attack" type="checkbox" checked></label>
 <button type="submit">Запустить моделирование</button></form></div>
 <div class="grid" id="metrics"></div>
@@ -48,6 +51,10 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <section class="panel"><h3>КИЕ: независимый контроль отчётов узлов</h3>
 <p>Рассогласование отчёта, нарушение MAC и потери контроля различаются; это исследовательские свидетельства, а не доказанная компрометация.</p>
 <div class="scroll"><table><thead><tr><th>Узел</th><th>Классификация</th><th>Доставлено/попыток</th><th>Несовпадений</th><th>MAC ошибок</th><th>Кворум</th><th>Меньшинство / недействительные</th></tr></thead><tbody id="cu-nodes"></tbody></table></div></section>
+<section class="panel"><h3>Общие сбои зон наблюдения</h3>
+<p>Симптомы агрегируются только по заново проверенным подписям наблюдателей и общей эпохе. Несогласие большинства не является доказательством виновности датчика.</p>
+<div id="domain-summary" class="small"></div>
+<div class="scroll"><table><thead><tr><th>Эпоха, мс</th><th>Отсутствующие домены</th><th>Нет кворума (узлы)</th><th>Общие признаки</th></tr></thead><tbody id="zone-events"></tbody></table></div></section>
 <section class="panel"><h3>Журнал сигнальных событий</h3><div class="scroll"><table>
 <thead><tr><th>мс</th><th>Поколение</th><th>Протокол</th><th>Операция</th><th>Источник → Адресат</th><th>Результат</th></tr></thead>
 <tbody id="events"></tbody></table></div></section>
@@ -77,7 +84,14 @@ const s=data.summary,m=$('metrics');m.replaceChildren();
 [['Сообщений',s.total_messages],['Доставлено',s.delivered],['КИЕ доставлено',s.cu_delivered+'/'+s.cu_observations],['Тревог',s.alerts]]
 .forEach(([name,value])=>{const c=add('div',m);c.className='metric';
 const k=add('span',c,name);k.className='small';add('strong',c,String(value))});
-draw(data);const cues=$('cu-nodes');cues.replaceChildren();
+draw(data);const z=data.domain_evidence||{}, zs=z.summary||{};
+$('domain-summary').textContent='Эпох с общей потерей: '+(zs.epochs_with_shared_missing||0)+'; без межузлового кворума: '+(zs.epochs_with_quorum_loss||0)+'; общие несовпадающие голоса: '+(zs.epochs_with_shared_outlier||0);
+const zbody=$('zone-events');zbody.replaceChildren();
+(z.epochs||[]).filter(e=>e.patterns.length||e.cross_node_quorum_loss).slice(-12).forEach(e=>{
+const tr=add('tr',zbody);
+[e.time_ms,e.missing_domains.join(', ')||'—',e.quorum_lost_nodes.join(', ')||'—',e.patterns.map(p=>p.kind+' '+p.observer+' ('+p.affected_count+')').join('; ')||'—'].forEach(v=>add('td',tr,String(v)));
+});
+const cues=$('cu-nodes');cues.replaceChildren();
 const descriptions={persistent_report_divergence:'Повторное рассогласование',
 report_integrity_failure:'Ошибка MAC (источник не определён)',
 unconfirmed_divergence:'Пока не подтверждено',telemetry_degraded:'Потеря наблюдений',
@@ -106,6 +120,8 @@ try{const p=new URLSearchParams({duration:$('duration').value,subscribers:$('sub
 seed:$('seed').value,traffic:$('traffic').value,
 nodecase:$('nodecase').value,observercase:$('observercase').value,
 observerloss:String(Number($('observerloss').value)/100),
+reportnodes:$('reportnodes').value,sharedzone:$('sharedzone').value,
+sharedprob:String(Number($('sharedprob').value)/100),
 attacks:$('attack').checked?'1':'0'});
 const res=await fetch('/api/run?'+p.toString());const payload=await res.json();
 if(!res.ok)throw new Error(payload.error||'HTTP '+res.status);render(payload)}
@@ -141,6 +157,10 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                     node_case=params.get("nodecase", ["auto"])[0],
                     observer_case=params.get("observercase", ["none"])[0],
                     observer_loss_rate=float(params.get("observerloss", ["0"])[0]),
+                    report_fault_nodes=tuple(filter(None, (
+                        n.strip() for n in params.get("reportnodes", [""])[0].split(",")))),
+                    shared_zone_case=params.get("sharedzone", ["none"])[0],
+                    shared_zone_probability=float(params.get("sharedprob", ["1"])[0]),
                     duration_s=duration,
                     subscribers=subscribers,
                     seed=number("seed", "42"),
