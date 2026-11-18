@@ -6,7 +6,8 @@ honesty. Two colluding observers can deceive the majority by construction.
 """
 from __future__ import annotations
 
-from collections import Counter
+from itertools import combinations
+from statistics import median
 import hashlib
 import hmac
 import json
@@ -49,9 +50,16 @@ def sign_vote(root_key: bytes, observer: str, node: str, nonce: str,
                     hashlib.sha256).hexdigest()
 
 
+def count_distance(left: dict[str, int], right: dict[str, int]) -> int:
+    """L-infinity distance between operation vectors (absent keys mean zero)."""
+    return max((abs(left.get(k, 0) - right.get(k, 0))
+                for k in left.keys() | right.keys()), default=0)
+
+
 def consensus_from_votes(
     votes: list[dict[str, Any]], root_key: bytes, node: str, nonce: str,
     now_ms: int, quorum: int = 2, max_age_ms: int = 1000,
+    max_count_delta: int = 0,
 ) -> dict[str, Any]:
     """Independently verify votes and choose only a multi-domain majority.
 
@@ -65,6 +73,8 @@ def consensus_from_votes(
         raise ValueError("Require at least two independent monitoring domains")
     if max_age_ms < 0:
         raise ValueError("max_age_ms must be >= 0")
+    if type(max_count_delta) is not int or not 0 <= max_count_delta <= 100:
+        raise ValueError("max_count_delta must be an integer between 0 and 100")
     accepted: dict[str, dict[str, int]] = {}
     invalid: list[str] = []
     missing: list[str] = []
@@ -102,19 +112,32 @@ def consensus_from_votes(
             continue
         accepted[observer] = counts
     missing.extend(sorted(set(OBSERVER_DOMAINS) - seen))
-    groups: dict[bytes, list[str]] = {}
-    for observer, counts in accepted.items():
-        groups.setdefault(_canonical_counts(counts), []).append(observer)
-    winner = max(groups.items(), key=lambda group: len(group[1])) if groups else None
-    has_quorum = winner is not None and len(winner[1]) >= quorum
-    if has_quorum:
-        support = sorted(winner[1])
-        consensus_counts = json.loads(winner[0].decode())
-        digest = hashlib.sha256(winner[0]).hexdigest()
+    # Only *unique* maximal compatible witness clusters are accepted.
+    # If two candidate pairs overlap, abstain instead of selecting one by
+    # iteration order. Default tolerance=0 retains exact Stage 5 behavior.
+    names = sorted(accepted)
+    compatible: list[tuple[str, ...]] = []
+    for size in range(len(names), quorum - 1, -1):
+        for subset in combinations(names, size):
+            if all(count_distance(accepted[a], accepted[b]) <= max_count_delta
+                   for a, b in combinations(subset, 2)):
+                compatible.append(subset)
+        if compatible:
+            break
+    if len(compatible) == 1:
+        support = list(compatible[0])
+        keys = set().union(*(accepted[a].keys() for a in support))
+        consensus_counts = {
+            k: int(round(median(accepted[a].get(k, 0) for a in support)))
+            for k in sorted(keys)
+        }
+        digest = hashlib.sha256(_canonical_counts(consensus_counts)).hexdigest()
         status = "quorum"
     else:
         support, consensus_counts, digest = [], None, None
-        status = "split" if len(accepted) >= quorum else "insufficient"
+        status = ("ambiguous" if len(compatible) > 1 else
+                  "split" if len(accepted) >= quorum else "insufficient")
+    has_quorum = len(compatible) == 1
     return {
         "status": status, "quorum": bool(has_quorum),
         "supporters": support,
@@ -128,6 +151,7 @@ def consensus_from_votes(
         "missing_observers": sorted(set(missing)),
         "valid_votes": len(accepted),
         "quorum_size": quorum,
+        "max_count_delta": max_count_delta,
         "independent_domains": sorted(
             OBSERVER_DOMAINS[observer] for observer in support),
         "assumption": "Independent honest-majority, lab-only HMAC",
