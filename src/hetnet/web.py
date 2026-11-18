@@ -37,6 +37,8 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <label>Seed<input id="seed" type="number" value="42"></label>
 <label>Фоновая нагрузка, ×<input id="traffic" type="number" min="0" max="25" step="0.5" value="1"></label>
 <label>Сценарий КИЕ<select id="nodecase"><option value="auto">Авто</option><option value="none">Норма</option><option value="report">Отчёт узла</option><option value="tamper">Изменение в пути</option><option value="both">Оба</option></select></label>
+<label>Наблюдатели<select id="observercase"><option value="none">3 исправны</option><option value="one_faulty">1 подделывает</option><option value="two_colluding">2 в сговоре</option><option value="outage">Нет кворума</option><option value="mixed">Подделка + потеря</option><option value="bad_mac">Повреждён MAC</option><option value="stale">Устаревшая подпись</option></select></label>
+<label>Потери голосов, %<input id="observerloss" type="number" min="0" max="100" step="5" value="0"></label>
 <label style="align-self:center">Синтетические атаки<input id="attack" type="checkbox" checked></label>
 <button type="submit">Запустить моделирование</button></form></div>
 <div class="grid" id="metrics"></div>
@@ -45,7 +47,7 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <section class="panel"><h3>События контроля</h3><div id="alerts" class="scroll"></div></section></div>
 <section class="panel"><h3>КИЕ: независимый контроль отчётов узлов</h3>
 <p>Рассогласование отчёта, нарушение MAC и потери контроля различаются; это исследовательские свидетельства, а не доказанная компрометация.</p>
-<div class="scroll"><table><thead><tr><th>Узел</th><th>Классификация</th><th>Доставлено/попыток</th><th>Несовпадений</th><th>MAC ошибок</th></tr></thead><tbody id="cu-nodes"></tbody></table></div></section>
+<div class="scroll"><table><thead><tr><th>Узел</th><th>Классификация</th><th>Доставлено/попыток</th><th>Несовпадений</th><th>MAC ошибок</th><th>Кворум</th><th>Меньшинство / недействительные</th></tr></thead><tbody id="cu-nodes"></tbody></table></div></section>
 <section class="panel"><h3>Журнал сигнальных событий</h3><div class="scroll"><table>
 <thead><tr><th>мс</th><th>Поколение</th><th>Протокол</th><th>Операция</th><th>Источник → Адресат</th><th>Результат</th></tr></thead>
 <tbody id="events"></tbody></table></div></section>
@@ -79,11 +81,17 @@ draw(data);const cues=$('cu-nodes');cues.replaceChildren();
 const descriptions={persistent_report_divergence:'Повторное рассогласование',
 report_integrity_failure:'Ошибка MAC (источник не определён)',
 unconfirmed_divergence:'Пока не подтверждено',telemetry_degraded:'Потеря наблюдений',
-consistent:'Согласованно',insufficient_evidence:'Недостаточно данных'};
+consistent:'Согласованно',insufficient_evidence:'Недостаточно данных',
+consistent_with_loss:'Согласованно, потеря КИЕ',
+consistent_with_observer_outliers:'Согласовано с большинством; есть меньшинство',
+consistent_with_observer_gaps:'Часть контрольных доменов недоступна',
+observer_quorum_unavailable:'Нет независимого кворума'};
 (data.node_evidence?.nodes||[]).forEach(n=>{
 const tr=add('tr',cues);
 [n.node,descriptions[n.classification]||n.classification,
-n.delivered+'/'+n.observations,n.authenticated_mismatches,n.invalid_macs]
+n.delivered+'/'+n.observations,n.authenticated_mismatches,n.invalid_macs,
+n.observer_quorum_present+'/'+(n.observer_quorum_present+n.observer_quorum_missing),
+Object.entries(n.observer_outliers||{}).map(([key,v])=>key+':'+v).join(', ')+'; недост. '+Object.values(n.observer_invalid||{}).reduce((a,b)=>a+b,0)]
 .forEach(v=>add('td',tr,String(v)))});
 const alerts=$('alerts');alerts.replaceChildren();
 if(!data.alerts.length)add('p',alerts,'Тревог нет');
@@ -96,7 +104,9 @@ const tr=add('tr',tb);[e.time_ms,e.generation,e.protocol,e.operation,e.source+' 
 $('controls').addEventListener('submit',async e=>{e.preventDefault();const button=document.querySelector('button');button.disabled=true;button.textContent='Вычисление...';
 try{const p=new URLSearchParams({duration:$('duration').value,subscribers:$('subscribers').value,
 seed:$('seed').value,traffic:$('traffic').value,
-nodecase:$('nodecase').value,attacks:$('attack').checked?'1':'0'});
+nodecase:$('nodecase').value,observercase:$('observercase').value,
+observerloss:String(Number($('observerloss').value)/100),
+attacks:$('attack').checked?'1':'0'});
 const res=await fetch('/api/run?'+p.toString());const payload=await res.json();
 if(!res.ok)throw new Error(payload.error||'HTTP '+res.status);render(payload)}
 catch(err){alert(err.message)}finally{button.disabled=false;button.textContent='Запустить моделирование'}});
@@ -129,6 +139,8 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                 scenario = Scenario(
                     traffic_scale=traffic,
                     node_case=params.get("nodecase", ["auto"])[0],
+                    observer_case=params.get("observercase", ["none"])[0],
+                    observer_loss_rate=float(params.get("observerloss", ["0"])[0]),
                     duration_s=duration,
                     subscribers=subscribers,
                     seed=number("seed", "42"),
