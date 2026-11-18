@@ -18,7 +18,7 @@ from .procedures import ProcedureLedger
 from .traffic import TrafficGenerator
 from .observations import aggregate
 from .control import inspect_cu_events
-from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes, count_distance
+from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes, count_distance, counts_within
 from .probes import ProbeSampler
 from .attestation import sign_cu_report
 from .zonal import zonal_features
@@ -697,9 +697,9 @@ class Simulator:
                 signature, self._sign(node, nonce, reported))
             majority_counts = quorum["consensus_counts"] if quorum["quorum"] else None
             comparable = majority_counts is not None
-            consistent = (count_distance(reported, majority_counts)
-                          <= self.scenario.quorum_max_count_delta
-                          if comparable else None)
+            consistent = (counts_within(
+                reported, majority_counts, self.scenario.quorum_max_count_delta)
+                if comparable else None)
             outcome = ("UNVERIFIED" if not comparable and valid_mac
                        else "MATCH" if valid_mac and consistent
                        else "MISMATCH")
