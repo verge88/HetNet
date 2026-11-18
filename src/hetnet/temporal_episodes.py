@@ -20,8 +20,8 @@ from typing import Any
 from .external_aggregates import MAX_FILE_BYTES, _strict_pairs
 from .fault_domains import MONITORED_NODES
 from .labeled_aggregates import (
-    CLASSES, DETECTORS, ROW_FIELDS, _slug, _whole,
-    fit_thresholds, validate_labeled,
+    DETECTORS, _slug, _whole, fit_thresholds,
+    validate_labeled, load_labeled,
 )
 
 TOP_FIELDS = frozenset((
@@ -177,7 +177,10 @@ def scan_alarms(measurements: list[dict],
     timeline = sorted({r["interval_index"] for r in measurements})
     alarms = {name: [] for name in DETECTORS}
     coverage = {name: 0 for name in DETECTORS}
-    total_pairs = max(0, len(timeline) - 1) * len(MONITORED_NODES)
+    # Count missing entire periods as unavailable evidence too; do NOT
+    # inflate coverage when all rows of a relative interval disappear.
+    total_pairs = ((max(timeline) - min(timeline)) * len(MONITORED_NODES)
+                   if timeline else 0)
     for detector in DETECTORS:
         for node in MONITORED_NODES:
             previous: tuple[int, float] | None = None
@@ -316,8 +319,6 @@ def evaluate_temporal(train: list[dict], holdout: list[dict]) -> dict:
         eligible = sum(x["eligible_pairs"] for x in group)
         possible = sum(x["total_possible_pairs"] for x in group)
         # Delay aggregation requires weights; per-source mean delay * n.
-        delays = [x["mean_delay_intervals"] for x in group
-                  if x["mean_delay_intervals"] is not None]
         weighted_delays = sum(x["mean_delay_intervals"] *
                               x["detected_episodes"] for x in group
                               if x["mean_delay_intervals"] is not None)
@@ -325,6 +326,7 @@ def evaluate_temporal(train: list[dict], holdout: list[dict]) -> dict:
             "detector": detector,
             "attack_episodes": episodes,
             "detected_episodes": detected,
+            "missed_episodes": episodes - detected,
             "episode_recall": detected / episodes if episodes else None,
             "alerts": alarms,
             "matched_alerts": matched,
@@ -371,12 +373,6 @@ def evaluate_temporal(train: list[dict], holdout: list[dict]) -> dict:
 def run_temporal_eval(train_paths: list[Path],
                       holdout_paths: list[Path]) -> dict:
     return evaluate_temporal(
-        [validate_labeled(load_labeled_file(p)) for p in train_paths],
+        [load_labeled(p) for p in train_paths],
         [load_episodic(p) for p in holdout_paths],
     )
-
-
-def load_labeled_file(path: Path) -> dict:
-    # Delay imports to retain a small, dependency-free command surface.
-    from .labeled_aggregates import load_labeled
-    return load_labeled(path)
