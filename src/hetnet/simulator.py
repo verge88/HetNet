@@ -21,6 +21,7 @@ from .control import inspect_cu_events
 from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes
 from .fault_domains import (MONITORED_NODES, FAULT_CASES,
                             CommonFaultSchedule, CommonFault)
+from .domain_analysis import analyze_domain_correlations
 
 
 @dataclass(frozen=True)
@@ -811,6 +812,8 @@ class Simulator:
             [asdict(e) for e in self.events],
             observer_root_key=self._observer_key,
         )
+        domain_evidence = analyze_domain_correlations(
+            [asdict(e) for e in self.events], self._observer_key)
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
@@ -839,6 +842,7 @@ class Simulator:
                 "cu_observations": cu_total,
                 "cu_delivered": cu_delivered,
                 "cu_delivery_ratio": cu_delivered / cu_total if cu_total else None,
+                "domain_correlation": domain_evidence["summary"],
                 "node_evidence_classes": dict(sorted(Counter(
                     row["classification"] for row in node_evidence["nodes"]
                 ).items())),
@@ -850,6 +854,7 @@ class Simulator:
             "observations": aggregate([asdict(e) for e in self.events]),
             "alerts": [asdict(a) for a in self.alerts],
             "node_evidence": node_evidence,
+            "domain_evidence": domain_evidence,
             "standards": {
                 op: {"protocol": rule.protocol, "reference": rule.reference}
                 for op, rule in RULES.items()
