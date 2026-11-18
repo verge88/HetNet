@@ -103,9 +103,13 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                 params = parse_qs(path.query)
                 def number(name: str, default: str) -> int:
                     return int(params.get(name, [default])[0])
+                duration = number("duration", "18")
+                subscribers = number("subscribers", "8")
+                if not 5 <= duration <= 3600 or not 4 <= subscribers <= 300:
+                    raise ValueError("Dashboard limits: duration 5..3600 s, subscribers 4..300")
                 scenario = Scenario(
-                    duration_s=number("duration", "18"),
-                    subscribers=number("subscribers", "8"),
+                    duration_s=duration,
+                    subscribers=subscribers,
                     seed=number("seed", "42"),
                     inject_attacks=params.get("attacks", ["1"])[0] == "1",
                 )
