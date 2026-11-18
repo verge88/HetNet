@@ -20,6 +20,7 @@ from .observations import aggregate
 from .control import inspect_cu_events
 from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes, count_distance
 from .probes import ProbeSampler
+from .attestation import sign_cu_report
 from .fault_domains import (MONITORED_NODES, FAULT_CASES,
                             CommonFaultSchedule, CommonFault)
 from .domain_analysis import analyze_domain_correlations
@@ -588,11 +589,8 @@ class Simulator:
                          "5G", attack=True)
 
     def _sign(self, node: str, nonce: str, counts: dict[str, int]) -> str:
-        # Simulation-only per-node key and challenge nonce; not production PKI.
-        data = json.dumps({"node": node, "nonce": nonce, "counts": counts},
-                          sort_keys=True, separators=(",", ":")).encode()
-        node_key = hmac.new(self._cu_key, node.encode(), hashlib.sha256).digest()
-        return hmac.new(node_key, data, hashlib.sha256).hexdigest()
+        # Simulation-only node-specific signature, not production PKI.
+        return sign_cu_report(self._cu_key, node, nonce, counts)
 
     def _observer_votes(self, now: int, node: str, nonce: str,
                         expected: dict[str, int],
@@ -728,6 +726,7 @@ class Simulator:
                     if comparable else None,
                     "observer_votes": votes, "observer_quorum": quorum,
                     "mac_valid": valid_mac,
+                    "report_signature": signature,
                     "transport_loss_observed": False,
                     "cu_consecutive_losses": 0, "cu_staleness_ms": 0,
                     "cu_processing_delay_ms": 5 if node in ("msc2", "sgsn3") else 2,
@@ -827,6 +826,7 @@ class Simulator:
         node_evidence = inspect_cu_events(
             [asdict(e) for e in self.events],
             observer_root_key=self._observer_key,
+            cu_root_key=self._cu_key,
             max_count_delta=self.scenario.quorum_max_count_delta,
         )
         domain_evidence = analyze_domain_correlations(
