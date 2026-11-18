@@ -21,6 +21,7 @@ from .control import inspect_cu_events
 from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes, count_distance
 from .probes import ProbeSampler
 from .attestation import sign_cu_report
+from .zonal import zonal_features
 from .fault_domains import (MONITORED_NODES, FAULT_CASES,
                             CommonFaultSchedule, CommonFault)
 from .domain_analysis import analyze_domain_correlations
@@ -832,6 +833,10 @@ class Simulator:
         domain_evidence = analyze_domain_correlations(
             [asdict(e) for e in self.events], self._observer_key,
             max_count_delta=self.scenario.quorum_max_count_delta)
+        zonal_evidence = zonal_features(
+            [asdict(e) for e in self.events],
+            observer_root_key=self._observer_key, cu_root_key=self._cu_key,
+            max_count_delta=self.scenario.quorum_max_count_delta)
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
@@ -865,6 +870,7 @@ class Simulator:
                 "cu_delivered": cu_delivered,
                 "cu_delivery_ratio": cu_delivered / cu_total if cu_total else None,
                 "domain_correlation": domain_evidence["summary"],
+                "zonal_feature_coverage": zonal_evidence["summary"],
                 "node_evidence_classes": dict(sorted(Counter(
                     row["classification"] for row in node_evidence["nodes"]
                 ).items())),
@@ -877,6 +883,7 @@ class Simulator:
             "alerts": [asdict(a) for a in self.alerts],
             "node_evidence": node_evidence,
             "domain_evidence": domain_evidence,
+            "zonal_evidence": zonal_evidence,
             "standards": {
                 op: {"protocol": rule.protocol, "reference": rule.reference}
                 for op, rule in RULES.items()
