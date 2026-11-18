@@ -14,6 +14,9 @@ import json
 import random
 from typing import Any
 
+from .procedures import ProcedureLedger
+from .traffic import TrafficGenerator
+
 
 @dataclass(frozen=True)
 class Node:
@@ -28,6 +31,8 @@ class Link:
     source: str
     target: str
     latency_ms: int = 8
+    capacity_bps: int = 100_000_000
+    buffer_bytes: int = 16_384
 
 
 @dataclass(frozen=True)
@@ -70,16 +75,34 @@ class Topology:
         self.nodes: dict[str, Node] = {}
         self.links: list[Link] = []
         self._adj: dict[str, list[tuple[str, int]]] = defaultdict(list)
+        self._edges: dict[tuple[str, str], Link] = {}
+
+    def edge(self, a: str, b: str) -> Link:
+        return self._edges[tuple(sorted((a, b)))]
 
     def add(self, name: str, generation: str, role: str, zone: str) -> None:
         if name in self.nodes:
             raise ValueError("Duplicate node: " + name)
         self.nodes[name] = Node(name, generation, role, zone)
 
-    def connect(self, a: str, b: str, latency_ms: int = 8) -> None:
-        if a not in self.nodes or b not in self.nodes or a == b or latency_ms <= 0:
+    def connect(self, a: str, b: str, latency_ms: int = 8,
+                capacity_bps: int | None = None,
+                buffer_bytes: int = 16_384) -> None:
+        if (a not in self.nodes or b not in self.nodes or a == b
+                or latency_ms <= 0 or buffer_bytes <= 0):
             raise ValueError("Invalid topology edge")
-        self.links.append(Link(a, b, latency_ms))
+        key = tuple(sorted((a, b)))
+        if key in self._edges:
+            raise ValueError("Duplicate topology link")
+        if capacity_bps is None:
+            # Demonstration profile from thesis §3.2: SS7 links 64–128 kbps.
+            capacity_bps = 128_000 if {a, b} == {"stp", "hlr"} else (
+                64_000 if "stp" in key else 100_000_000)
+        if capacity_bps <= 0:
+            raise ValueError("Capacity must be positive")
+        link = Link(a, b, latency_ms, capacity_bps, buffer_bytes)
+        self.links.append(link)
+        self._edges[key] = link
         self._adj[a].append((b, latency_ms))
         self._adj[b].append((a, latency_ms))
 
@@ -150,6 +173,11 @@ class Scenario:
     inject_attacks: bool = True
     loss_rate: float = 0.0
     cu_interval_ms: int = 1500
+    traffic_scale: float = 1.0
+    traffic_amplitude: float = 0.35
+    traffic_peak_hour: float = 18.0
+    traffic_ar1_phi: float = 0.7
+    transaction_timeout_ms: int = 2000
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -160,6 +188,16 @@ class Scenario:
             raise ValueError("loss_rate must be in [0, 1]")
         if self.cu_interval_ms < 100:
             raise ValueError("cu_interval_ms must be >= 100")
+        if not 0 <= self.traffic_scale <= 50:
+            raise ValueError("traffic_scale must be between 0 and 50")
+        if not 0 <= self.traffic_amplitude < 1:
+            raise ValueError("traffic_amplitude must be in [0,1)")
+        if not 0 <= self.traffic_peak_hour < 24:
+            raise ValueError("traffic_peak_hour must be in [0,24)")
+        if not 0 <= self.traffic_ar1_phi < 1:
+            raise ValueError("traffic_ar1_phi must be in [0,1)")
+        if self.transaction_timeout_ms < 200:
+            raise ValueError("transaction_timeout_ms must be >= 200")
 
 
 @dataclass
@@ -223,6 +261,16 @@ class Simulator:
         self._node_counts: dict[str, Counter[str]] = defaultdict(Counter)
         self._independent_counts: dict[str, Counter[str]] = defaultdict(Counter)
         self._rate: dict[tuple[str, str], deque[int]] = defaultdict(deque)
+        self._procedures = ProcedureLedger(self.scenario.transaction_timeout_ms)
+        self._traffic = TrafficGenerator(
+            self.scenario.seed, scale=self.scenario.traffic_scale,
+            amplitude=self.scenario.traffic_amplitude,
+            peak_hour=self.scenario.traffic_peak_hour,
+            phi=self.scenario.traffic_ar1_phi,
+        )
+        self._link_available_ms: dict[tuple[str, str], int] = defaultdict(int)
+        self._queue_drops = 0
+        self._max_queue_delay_ms = 0
         self._completed_invites: set[str] = set()
         self._acked_invites: set[str] = set()
         self._nf_profiles: dict[str, tuple[str, str]] = {}
@@ -259,14 +307,45 @@ class Simulator:
                          subject: str, correlation_id: str, attack: bool,
                          payload: dict[str, Any], response: bool) -> None:
         route = self.net.path(source, target)
-        lost = bool(route) and any(
-            self.rng.random() < self.scenario.loss_rate for _ in route[1:]
-        )
-        delay = self.net.latency(route) + self.rng.randint(1, 4) if route else 0
         packet = Packet(source, target, operation, protocol, standard,
                         generation, subject, correlation_id, time_ms, route,
-                        lost, attack, payload, response)
-        self._push(time_ms + delay, "packet", packet)
+                        False, attack, payload, response)
+        # Each hop runs at its actual simulation timestamp, so queues are
+        # updated in causal event order rather than reserving future links.
+        self._push(time_ms, "hop", (packet, 0))
+
+    def _on_hop(self, now: int, packet: Packet, index: int) -> None:
+        if not packet.route or index == len(packet.route) - 1:
+            self._on_packet(now, packet)
+            return
+        left, right = packet.route[index:index + 2]
+        link = self.net.edge(left, right)
+        # Approximate synthetic signaling PDU sizes, not protocol wire encoding.
+        estimated_bytes = {
+            "SS7/MAP": 140, "Diameter": 320, "GTPv2-C": 180,
+            "SIP/IMS": 520, "5G-SBI/HTTP2": 600,
+        }.get(packet.protocol, 200)
+        if self.rng.random() < self.scenario.loss_rate:
+            packet.lost = True
+            self._on_packet(now, packet)
+            return
+        direction = (left, right)
+        available = self._link_available_ms[direction]
+        backlog_bytes = max(0, available - now) * link.capacity_bps / 8000.0
+        if backlog_bytes + estimated_bytes > link.buffer_bytes:
+            self._queue_drops += 1
+            self._record(now, packet, "CONGESTED")
+            return
+        departure = max(now, available)
+        self._max_queue_delay_ms = max(
+            self._max_queue_delay_ms, departure - now)
+        serialization_ms = max(
+            1, (estimated_bytes * 8 * 1000 + link.capacity_bps - 1)
+            // link.capacity_bps,
+        )
+        self._link_available_ms[direction] = departure + serialization_ms
+        self._push(departure + serialization_ms + link.latency_ms,
+                   "hop", (packet, index + 1))
 
     def _reply(self, now: int, packet: Packet, operation: str, offset: int = 3) -> None:
         self._schedule_packet(now + offset, packet.target, packet.source, operation,
@@ -332,6 +411,19 @@ class Simulator:
                 if not self._verify_nf_profile(packet, now):
                     self._record(now, packet, "REJECTED")
                     return
+        if packet.response:
+            decision = self._procedures.inspect_response(
+                now, packet.operation, packet.source, packet.target,
+                packet.subject, packet.correlation_id)
+        else:
+            decision = self._procedures.inspect_request(
+                now, packet.operation, RULES[packet.operation].response,
+                packet.source, packet.target, packet.subject, packet.correlation_id)
+        if not decision.accepted:
+            self._record(now, packet, "REJECTED")
+            self._alert(now, decision.category, packet.source,
+                        decision.reason, packet.correlation_id)
+            return
         self._record(now, packet, "DELIVERED")
         self._node_counts[packet.source][packet.operation] += 1
         # Independent observer is outside the reporting node (abstract transit tap).
@@ -348,6 +440,9 @@ class Simulator:
                             packet.correlation_id, dedupe=True)
 
         if packet.response:
+            if decision.completed in REGISTRATIONS:
+                # Registration is committed only on a matched successful reply.
+                self.registered[packet.subject] = REGISTRATIONS[decision.completed]
             if packet.operation == "SIP.200_INVITE":
                 self._completed_invites.add(packet.correlation_id)
                 if packet.correlation_id not in self._acked_invites:
@@ -356,8 +451,6 @@ class Simulator:
                                  packet.generation, packet.attack)
             return
 
-        if packet.operation in REGISTRATIONS:
-            self.registered[packet.subject] = REGISTRATIONS[packet.operation]
         if packet.operation == "SIP.ACK":
             if packet.correlation_id not in self._completed_invites:
                 self._alert(now, "sip_unexpected_ack", packet.source,
@@ -503,6 +596,11 @@ class Simulator:
                          "nfInstanceId": "amf5-instance",
                          "nfType": "AMF", "nfStatus": "REGISTERED",
                      })
+        for time_ms, profile, subject, corr in self._traffic.stream(
+                self.scenario.duration_s, self.scenario.subscribers):
+            self._push(time_ms, "background", (
+                profile.operation, profile.source, profile.target,
+                subject, corr, profile.generation))
         for time_ms in range(self.scenario.cu_interval_ms,
                              self.scenario.duration_s * 1000,
                              self.scenario.cu_interval_ms):
@@ -522,8 +620,12 @@ class Simulator:
             now, _, kind, item = heapq.heappop(self._queue)
             if now > horizon:
                 break
-            if kind == "packet":
-                self._on_packet(now, item)
+            if kind == "hop":
+                self._on_hop(now, *item)
+            elif kind == "background":
+                operation, source, target, subject, corr, generation = item
+                self.request(now, operation, source, target,
+                             subject, corr, generation)
             elif kind == "attach":
                 self._attach(now, *item)
             elif kind == "move":
@@ -532,6 +634,10 @@ class Simulator:
                 self._ims(now, *item)
             elif kind == "poll":
                 self._poll(now)
+                for tx in self._procedures.expire(now):
+                    self._alert(now, "transaction_timeout", tx.source,
+                                tx.operation + ": no matching reply before timeout",
+                                tx.correlation_id)
             elif kind == "inject":
                 self._inject(now)
             elif kind == "compromise":
@@ -560,6 +666,7 @@ class Simulator:
                 "total_messages": sum(counts.values()),
                 "delivered": counts["DELIVERED"],
                 "lost": counts["LOST"],
+                "congested": counts["CONGESTED"],
                 "rejected": counts["REJECTED"],
                 "no_route": counts["NO_ROUTE"],
                 "alerts": len(self.alerts),
@@ -570,6 +677,10 @@ class Simulator:
                 ),
                 "by_protocol": dict(sorted(by_protocol.items())),
                 "by_generation": dict(sorted(by_generation.items())),
+                "traffic_generated": dict(sorted(self._traffic.generated.items())),
+                "max_queue_delay_ms": self._max_queue_delay_ms,
+                "queue_drops": self._queue_drops,
+                "transactions": self._procedures.snapshot(),
             },
             "registered": dict(sorted(self.registered.items())),
             "nodes": [asdict(n) for n in self.net.nodes.values()],
