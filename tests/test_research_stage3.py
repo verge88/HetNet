@@ -12,6 +12,7 @@ from hetnet import Scenario, Simulator
 from hetnet.calibration import calibrate, calibrate_file, load_rates
 from hetnet.cli import main
 from hetnet.episode import OfflineDetector, episodes, evaluate_episodes, run_validation
+from hetnet.stress import benign_stress
 from hetnet.traffic import TrafficGenerator
 from hetnet.wire import (DecodeError, inspect_wire, parse_diameter,
                          parse_gtpv2, parse_http2_frame, parse_sip)
@@ -197,6 +198,20 @@ class EpisodeTests(unittest.TestCase):
         self.assertEqual(original, detector.detect(copied))
         evaluation = evaluate_episodes(result["events"], original)
         self.assertEqual(evaluation["tp"], 4)
+
+    def test_benign_loss_and_load_stress(self):
+        result = benign_stress(
+            training_seeds=(21, 22), test_seeds=(42, 43),
+            duration_s=10, subscribers=8,
+            traffic_scales=(1.0, 12.0), loss_rates=(0.0, 0.1))
+        self.assertEqual(len(result["runs"]), 16)
+        self.assertEqual(result["training_seeds"], [21, 22])
+        self.assertEqual(len(result["conditions"]), 8)
+        for row in result["runs"]:
+            self.assertGreater(row["negative_correlations"], 0)
+            self.assertTrue(0 <= row["false_positive_rate"] <= 1)
+        with self.assertRaises(ValueError):
+            benign_stress(training_seeds=(1,), test_seeds=(1,))
 
     def test_disjoint_seed_validation_with_clean_controls(self):
         report = run_validation(
