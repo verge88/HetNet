@@ -777,7 +777,10 @@ class Simulator:
             e.generation for e in self.events
             if e.protocol not in ("CU", "INTERWORKING")
         )
-        node_evidence = inspect_cu_events([asdict(e) for e in self.events])
+        node_evidence = inspect_cu_events(
+            [asdict(e) for e in self.events],
+            observer_root_key=self._observer_key,
+        )
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
