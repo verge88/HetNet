@@ -80,3 +80,15 @@ jobs:
           name: hetnet-stage6-multi-node-domains
           path: results/stage6/
           if-no-files-found: error
+      - name: Stage 7 probe sampling and verified zonal CU statistics
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case none --report-fault-nodes msc2,amf5 --observer-capture-miss 0.05 --quorum-max-count-delta 2 --output results/stage7/probe-demo
+          python -m hetnet probe-study --duration 18 --subscribers 8 --start-seed 42 --runs 6 --capture-miss-rates 0,0.05,0.15 --tolerances 0,1,2 --cohorts none,legacy_5g --output results/stage7/probe-study
+      - name: Archive stage 7 zonal and observer sampling results
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage7-zonal-probes
+          path: results/stage7/
+          if-no-files-found: error

@@ -9,7 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from collections import Counter
 
-from .consensus import consensus_from_votes
+from .consensus import consensus_from_votes, count_distance, counts_within
+from .attestation import verify_cu_report
 from typing import Any
 
 
@@ -36,7 +37,9 @@ class _NodeState:
 
 def inspect_cu_events(events: list[dict[str, Any]],
                       min_confirmations: int = 2,
-                      *, observer_root_key: bytes | None = None) -> dict[str, Any]:
+                      *, observer_root_key: bytes | None = None,
+                      cu_root_key: bytes | None = None,
+                      max_count_delta: int = 0) -> dict[str, Any]:
     """Classify nodes without consulting injection flags or security alerts.
 
     Repeated *authenticated* report-versus-observer disagreement supports
@@ -46,6 +49,8 @@ def inspect_cu_events(events: list[dict[str, Any]],
     """
     if min_confirmations < 1:
         raise ValueError("min_confirmations must be positive")
+    if type(max_count_delta) is not int or not 0 <= max_count_delta <= 100:
+        raise ValueError("max_count_delta must be an integer in [0,100]")
     nodes: dict[str, _NodeState] = {}
     cu = sorted((item for item in events
                  if item.get("protocol") == "CU"
@@ -71,12 +76,19 @@ def inspect_cu_events(events: list[dict[str, Any]],
             # independently held verifier key is available.
             vote_quorum = consensus_from_votes(
                 detail.get("observer_votes", []), observer_root_key,
-                node, event["correlation_id"], event["time_ms"])
+                node, event["correlation_id"], event["time_ms"],
+                max_count_delta=max_count_delta)
         if isinstance(vote_quorum, dict):
             state.observer_outliers.update(vote_quorum.get("outlier_observers", []))
             state.observer_invalid.update(vote_quorum.get("invalid_observers", []))
             state.observer_missing.update(vote_quorum.get("missing_observers", []))
-        if detail.get("mac_valid") is not True:
+        if cu_root_key is not None:
+            valid_report = verify_cu_report(
+                cu_root_key, node, event["correlation_id"],
+                detail.get("reported_counts"), detail.get("report_signature"))
+        else:
+            valid_report = detail.get("mac_valid") is True
+        if not valid_report:
             state.invalid_macs += 1
             state.mismatch_streak = 0
             state.evidence_correlation_ids.append(event["correlation_id"])
@@ -96,7 +108,7 @@ def inspect_cu_events(events: list[dict[str, Any]],
                 continue
             state.observer_quorum_present += 1
             state.last_observer_quorum = True
-            mismatch = reported_vector != majority
+            mismatch = not counts_within(reported_vector, majority, max_count_delta)
         else:
             # Backward-compatible Stage 4 hand-built CU events.
             reported = detail.get("reported_total")
@@ -197,6 +209,7 @@ def inspect_cu_events(events: list[dict[str, Any]],
                    if observer_root_key is not None else
                    "CU+preverified witness summaries; verify raw votes separately"),
         "min_confirmations": min_confirmations,
+        "max_count_delta": max_count_delta,
         "nodes": result,
         "categories": {
             "persistent_report_divergence":

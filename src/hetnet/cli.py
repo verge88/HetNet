@@ -15,6 +15,7 @@ from .stress import benign_stress
 from .node_validation import node_study
 from .zone_validation import zone_study, OBSERVER_CASES
 from .cohort_validation import multi_node_study, COHORTS
+from .probe_validation import probe_study
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -27,6 +28,7 @@ def export_run(result: dict[str, Any], output: Path) -> None:
         ("alerts.json", result["alerts"]),
         ("node_evidence.json", result["node_evidence"]),
         ("domain_evidence.json", result["domain_evidence"]),
+        ("zonal_evidence.json", result["zonal_evidence"]),
         ("topology.json", {"nodes": result["nodes"], "links": result["links"]}),
     ):
         (output / name).write_text(
@@ -77,6 +79,10 @@ def main(argv: list[str] | None = None) -> None:
                      help="Comma-separated monitored nodes compromised after 72%%")
     run.add_argument("--shared-zone-case", choices=FAULT_CASES, default="none")
     run.add_argument("--shared-zone-probability", type=float, default=1.0)
+    run.add_argument("--observer-capture-miss", type=float, default=0.0,
+                     help="Independent virtual probe miss probability, 0..0.5")
+    run.add_argument("--quorum-max-count-delta", type=int, default=0,
+                     help="Absolute tolerated per-operation count difference")
     run.add_argument("--output", type=Path, default=Path("results"))
     run.add_argument("--traffic-scale", type=float, default=1.0)
     run.add_argument("--traffic-amplitude", type=float, default=0.35)
@@ -101,6 +107,16 @@ def main(argv: list[str] | None = None) -> None:
     validation.add_argument("--test-start-seed", type=int, default=42)
     validation.add_argument("--test-runs", type=int, default=10)
     validation.add_argument("--output", type=Path, default=Path("results/validation"))
+    probe = commands.add_parser(
+        "probe-study", help="Synthetic sensor sampling vs tolerant-quorum sensitivity")
+    probe.add_argument("--duration", type=int, default=18)
+    probe.add_argument("--subscribers", type=int, default=8)
+    probe.add_argument("--start-seed", type=int, default=42)
+    probe.add_argument("--runs", type=int, default=6)
+    probe.add_argument("--capture-miss-rates", default="0,0.05,0.15")
+    probe.add_argument("--tolerances", default="0,1,2")
+    probe.add_argument("--cohorts", default="none,legacy_5g")
+    probe.add_argument("--output", type=Path, default=Path("results/probe-study"))
     cohort = commands.add_parser(
         "cohort-study", help="Multi-generation CU nodes vs common observer-domain faults")
     cohort.add_argument("--duration", type=int, default=18)
@@ -170,6 +186,25 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError, DecodeError) as error:
             parser.error(str(error))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "probe-study":
+        if not 1 <= args.runs <= 100:
+            parser.error("--runs must be between 1 and 100")
+        try:
+            report = probe_study(
+                seeds=tuple(range(args.start_seed, args.start_seed + args.runs)),
+                capture_miss_rates=tuple(float(x) for x in args.capture_miss_rates.split(",")),
+                tolerances=tuple(int(x) for x in args.tolerances.split(",")),
+                cohorts=tuple(x.strip() for x in args.cohorts.split(",")),
+                duration_s=args.duration, subscribers=args.subscribers,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "probe_study.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(report["groups"], ensure_ascii=False, indent=2))
+        print("Exported probe study to", args.output.resolve())
     elif args.command == "cohort-study":
         if not 1 <= args.runs <= 100:
             parser.error("--runs must be between 1 and 100")
@@ -306,6 +341,8 @@ def main(argv: list[str] | None = None) -> None:
                 n.strip() for n in args.report_fault_nodes.split(",")))),
             shared_zone_case=args.shared_zone_case,
             shared_zone_probability=args.shared_zone_probability,
+            observer_capture_miss=args.observer_capture_miss,
+            quorum_max_count_delta=args.quorum_max_count_delta,
             traffic_scale=args.traffic_scale,
             traffic_amplitude=args.traffic_amplitude,
             traffic_peak_hour=args.peak_hour,
