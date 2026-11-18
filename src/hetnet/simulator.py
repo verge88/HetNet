@@ -818,8 +818,12 @@ class Simulator:
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
                            for e in self.events)
+        scenario_snapshot = asdict(self.scenario)
+        # Public result JSON must survive an exact dumps/loads roundtrip.
+        # dataclasses.asdict preserves tuples, whereas JSON represents arrays.
+        scenario_snapshot["report_fault_nodes"] = list(self.scenario.report_fault_nodes)
         return {
-            "scenario": asdict(self.scenario),
+            "scenario": scenario_snapshot,
             "summary": {
                 "total_messages": sum(counts.values()),
                 "delivered": counts["DELIVERED"],
