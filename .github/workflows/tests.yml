@@ -44,3 +44,15 @@ jobs:
           name: hetnet-stage3-episode-validation
           path: results/stage3/
           if-no-files-found: error
+      - name: Stage 4 independent node evidence benchmark
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case report --output results/stage4/report-demo
+          python -m hetnet node-study --duration 18 --subscribers 8 --runs 6 --loss-rates 0,0.1,0.35 --output results/stage4/node-study
+      - name: Archive stage 4 evidence and measurements
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage4-cu-evidence
+          path: results/stage4/
+          if-no-files-found: error

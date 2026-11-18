@@ -17,7 +17,7 @@ h1{font-size:29px;margin:0 0 4px;letter-spacing:-.6px}p{color:#9eacc7}
 header{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
 .panel{background:#121d33;border:1px solid #2b3853;border-radius:13px;padding:18px;margin:16px 0}
 .controls{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
-label{display:grid;gap:5px;color:#b6c6e0}input{background:#0b1426;color:white;border:1px solid #40516e;padding:10px;border-radius:8px;width:115px}
+label{display:grid;gap:5px;color:#b6c6e0}input,select{background:#0b1426;color:white;border:1px solid #40516e;padding:10px;border-radius:8px;width:125px}
 input[type=checkbox]{width:auto;accent-color:#46c7a9}
 button{background:#40bda1;color:#08211a;border:0;border-radius:9px;padding:11px 19px;font-weight:750;cursor:pointer}
 .grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:12px}.metric{background:#182844;border-radius:10px;padding:15px}.metric strong{display:block;font-size:27px}
@@ -36,12 +36,16 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <label>Абоненты<input id="subscribers" type="number" min="4" max="300" value="8"></label>
 <label>Seed<input id="seed" type="number" value="42"></label>
 <label>Фоновая нагрузка, ×<input id="traffic" type="number" min="0" max="25" step="0.5" value="1"></label>
+<label>Сценарий КИЕ<select id="nodecase"><option value="auto">Авто</option><option value="none">Норма</option><option value="report">Отчёт узла</option><option value="tamper">Изменение в пути</option><option value="both">Оба</option></select></label>
 <label style="align-self:center">Синтетические атаки<input id="attack" type="checkbox" checked></label>
 <button type="submit">Запустить моделирование</button></form></div>
 <div class="grid" id="metrics"></div>
 <div class="two"><section class="panel"><h3>Топология гетерогенной сети</h3>
 <div class="legend" id="legend"></div><svg id="map" viewBox="0 0 900 470" aria-label="Топология сети"></svg></section>
 <section class="panel"><h3>События контроля</h3><div id="alerts" class="scroll"></div></section></div>
+<section class="panel"><h3>КИЕ: независимый контроль отчётов узлов</h3>
+<p>Рассогласование отчёта, нарушение MAC и потери контроля различаются; это исследовательские свидетельства, а не доказанная компрометация.</p>
+<div class="scroll"><table><thead><tr><th>Узел</th><th>Классификация</th><th>Доставлено/попыток</th><th>Несовпадений</th><th>MAC ошибок</th></tr></thead><tbody id="cu-nodes"></tbody></table></div></section>
 <section class="panel"><h3>Журнал сигнальных событий</h3><div class="scroll"><table>
 <thead><tr><th>мс</th><th>Поколение</th><th>Протокол</th><th>Операция</th><th>Источник → Адресат</th><th>Результат</th></tr></thead>
 <tbody id="events"></tbody></table></div></section>
@@ -68,10 +72,20 @@ dot.className='dot';dot.style.background=colors[k];span.appendChild(document.cre
 }
 function render(data){
 const s=data.summary,m=$('metrics');m.replaceChildren();
-[['Сообщений',s.total_messages],['Доставлено',s.delivered],['Очередь, мс',s.max_queue_delay_ms],['Тревог',s.alerts]]
+[['Сообщений',s.total_messages],['Доставлено',s.delivered],['КИЕ доставлено',s.cu_delivered+'/'+s.cu_observations],['Тревог',s.alerts]]
 .forEach(([name,value])=>{const c=add('div',m);c.className='metric';
 const k=add('span',c,name);k.className='small';add('strong',c,String(value))});
-draw(data);const alerts=$('alerts');alerts.replaceChildren();
+draw(data);const cues=$('cu-nodes');cues.replaceChildren();
+const descriptions={persistent_report_divergence:'Повторное рассогласование',
+report_integrity_failure:'Ошибка MAC (источник не определён)',
+unconfirmed_divergence:'Пока не подтверждено',telemetry_degraded:'Потеря наблюдений',
+consistent:'Согласованно',insufficient_evidence:'Недостаточно данных'};
+(data.node_evidence?.nodes||[]).forEach(n=>{
+const tr=add('tr',cues);
+[n.node,descriptions[n.classification]||n.classification,
+n.delivered+'/'+n.observations,n.authenticated_mismatches,n.invalid_macs]
+.forEach(v=>add('td',tr,String(v)))});
+const alerts=$('alerts');alerts.replaceChildren();
 if(!data.alerts.length)add('p',alerts,'Тревог нет');
 data.alerts.forEach(a=>{const p=add('p',alerts);const b=add('strong',p,a.category+' · '+a.source);
 add('div',p,a.reason+' ('+a.time_ms+' мс)')});
@@ -81,7 +95,8 @@ const tr=add('tr',tb);[e.time_ms,e.generation,e.protocol,e.operation,e.source+' 
 }
 $('controls').addEventListener('submit',async e=>{e.preventDefault();const button=document.querySelector('button');button.disabled=true;button.textContent='Вычисление...';
 try{const p=new URLSearchParams({duration:$('duration').value,subscribers:$('subscribers').value,
-seed:$('seed').value,traffic:$('traffic').value,attacks:$('attack').checked?'1':'0'});
+seed:$('seed').value,traffic:$('traffic').value,
+nodecase:$('nodecase').value,attacks:$('attack').checked?'1':'0'});
 const res=await fetch('/api/run?'+p.toString());const payload=await res.json();
 if(!res.ok)throw new Error(payload.error||'HTTP '+res.status);render(payload)}
 catch(err){alert(err.message)}finally{button.disabled=false;button.textContent='Запустить моделирование'}});
@@ -113,6 +128,7 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                     raise ValueError("Dashboard traffic scale must be 0..25")
                 scenario = Scenario(
                     traffic_scale=traffic,
+                    node_case=params.get("nodecase", ["auto"])[0],
                     duration_s=duration,
                     subscribers=subscribers,
                     seed=number("seed", "42"),
