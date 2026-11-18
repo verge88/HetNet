@@ -12,6 +12,7 @@ from .experiment import export_experiment, run_multiseed
 from .calibration import calibrate_file, load_rates
 from .episode import run_validation
 from .stress import benign_stress
+from .node_validation import node_study
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
 
@@ -21,6 +22,7 @@ def export_run(result: dict[str, Any], output: Path) -> None:
         ("result.json", result),
         ("summary.json", result["summary"]),
         ("alerts.json", result["alerts"]),
+        ("node_evidence.json", result["node_evidence"]),
         ("topology.json", {"nodes": result["nodes"], "links": result["links"]}),
     ):
         (output / name).write_text(
@@ -61,6 +63,8 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--loss-rate", type=float, default=0.0)
     run.add_argument("--cu-interval", type=int, default=1500, help="milliseconds")
     run.add_argument("--no-attacks", action="store_true")
+    run.add_argument("--node-case", choices=["auto", "none", "report", "tamper", "both"],
+                     default="auto", help="Isolated node compromise/tamper scenario")
     run.add_argument("--output", type=Path, default=Path("results"))
     run.add_argument("--traffic-scale", type=float, default=1.0)
     run.add_argument("--traffic-amplitude", type=float, default=0.35)
@@ -85,6 +89,15 @@ def main(argv: list[str] | None = None) -> None:
     validation.add_argument("--test-start-seed", type=int, default=42)
     validation.add_argument("--test-runs", type=int, default=10)
     validation.add_argument("--output", type=Path, default=Path("results/validation"))
+    node = commands.add_parser(
+        "node-study", help="CU report compromise vs benign packet-loss matrix")
+    node.add_argument("--duration", type=int, default=18)
+    node.add_argument("--subscribers", type=int, default=8)
+    node.add_argument("--start-seed", type=int, default=42)
+    node.add_argument("--runs", type=int, default=4)
+    node.add_argument("--loss-rates", default="0,0.1,0.35")
+    node.add_argument("--traffic-scale", type=float, default=1.0)
+    node.add_argument("--output", type=Path, default=Path("results/node-study"))
     stress = commands.add_parser(
         "stress", help="Benign load/loss domain-shift false-positive experiment")
     stress.add_argument("--duration", type=int, default=18)
@@ -124,6 +137,25 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError, DecodeError) as error:
             parser.error(str(error))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "node-study":
+        if not 1 <= args.runs <= 100:
+            parser.error("--runs must be between 1 and 100")
+        try:
+            losses = tuple(float(x) for x in args.loss_rates.split(","))
+            study = node_study(
+                seeds=tuple(range(args.start_seed, args.start_seed + args.runs)),
+                loss_rates=losses,
+                duration_s=args.duration, subscribers=args.subscribers,
+                traffic_scale=args.traffic_scale,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "node_study.json").write_text(
+            json.dumps(study, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(study["conditions"], ensure_ascii=False, indent=2))
+        print("Exported node study to", args.output.resolve())
     elif args.command == "stress":
         if not 1 <= args.test_runs <= 20:
             parser.error("--test-runs must be 1..20")
@@ -196,6 +228,7 @@ def main(argv: list[str] | None = None) -> None:
             seed=args.seed, loss_rate=args.loss_rate,
             cu_interval_ms=args.cu_interval,
             inject_attacks=not args.no_attacks,
+            node_case=args.node_case,
             traffic_scale=args.traffic_scale,
             traffic_amplitude=args.traffic_amplitude,
             traffic_peak_hour=args.peak_hour,
