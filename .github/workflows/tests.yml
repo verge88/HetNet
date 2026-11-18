@@ -36,6 +36,7 @@ jobs:
           python -m hetnet calibrate --input examples/synthetic_aggregate_counts.json --output results/stage3/traffic_profile.json
           python -m hetnet validate --duration 18 --subscribers 8 --train-start-seed 21 --train-runs 5 --test-start-seed 42 --test-runs 10 --traffic-profile results/stage3/traffic_profile.json --output results/stage3
           python -m hetnet wirecheck --protocol diameter --hex 010000148000013e010000230000000100000002
+          python -m hetnet stress --duration 18 --subscribers 8 --test-runs 3 --scales 1,8,20 --loss-rates 0,0.1 --traffic-profile results/stage3/traffic_profile.json --output results/stage3
       - name: Archive stage 3 validation
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
