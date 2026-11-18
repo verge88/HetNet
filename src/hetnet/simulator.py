@@ -18,6 +18,7 @@ from .procedures import ProcedureLedger
 from .traffic import TrafficGenerator
 from .observations import aggregate
 from .control import inspect_cu_events
+from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,8 @@ class Scenario:
     transaction_timeout_ms: int = 2000
     traffic_rates: dict[str, float] = field(default_factory=dict)
     node_case: str = "auto"  # auto, none, report, tamper, both
+    observer_case: str = "none"
+    observer_loss_rate: float = 0.0
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -204,6 +207,11 @@ class Scenario:
             raise ValueError("transaction_timeout_ms must be >= 200")
         if self.node_case not in ("auto", "none", "report", "tamper", "both"):
             raise ValueError("node_case must be auto, none, report, tamper or both")
+        if self.observer_case not in ("none", "one_faulty", "two_colluding",
+                                      "outage", "mixed", "bad_mac", "stale"):
+            raise ValueError("Invalid observer fault case")
+        if not 0 <= self.observer_loss_rate <= 1:
+            raise ValueError("observer_loss_rate must be in [0, 1]")
 
 
 @dataclass
@@ -284,6 +292,9 @@ class Simulator:
         self._compromised: set[str] = set()
         self._wire_tampered: set[str] = set()
         self._cu_rng = random.Random(self.scenario.seed ^ 0xC0FFEE)
+        self._observer_rng = random.Random(self.scenario.seed ^ 0x0B5E77)
+        self._observer_key = hashlib.sha256(
+            ("hetnet-observer-lab:" + str(self.scenario.seed)).encode()).digest()
         self._cu_loss_streak: dict[str, int] = defaultdict(int)
         self._cu_last_success: dict[str, int] = {}
         self._cu_key = hashlib.sha256(("hetnet-cu-test:" + str(self.scenario.seed)).encode()).digest()
@@ -552,33 +563,77 @@ class Simulator:
         node_key = hmac.new(self._cu_key, node.encode(), hashlib.sha256).digest()
         return hmac.new(node_key, data, hashlib.sha256).hexdigest()
 
-    def _poll(self, now: int) -> None:
-        """Produce separate synthetic CU channel and independent tap evidence.
+    def _observer_votes(self, now: int, node: str, nonce: str,
+                        expected: dict[str, int]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Sample three monitoring domains with independent transport/faults.
 
-        The CU channel is a modeled two-hop request/response path, not a
-        standardized 3GPP control message. Missing reports never imply an
-        authenticated discrepancy and are not labeled as compromise.
+        Only DRA is subject to explicitly configured malicious observer cases.
+        Every other node has three normally independent laboratory witnesses.
         """
+        votes: list[dict[str, Any]] = []
+        # Align malicious observer behavior with the CU report compromise
+        # window, allowing clean pre-attack evidence and a meaningful
+        # collusion/concealment test.
+        case = (self.scenario.observer_case
+                if node == "dra" and now >= int(self.scenario.duration_s * 720)
+                else "none")
+        for observer, domain in OBSERVER_DOMAINS.items():
+            delivered = self._observer_rng.random() >= self.scenario.observer_loss_rate
+            if case in ("outage", "mixed") and observer == "tap-5gc":
+                delivered = False
+            if case == "outage" and observer == "tap-epc":
+                delivered = False
+            if not delivered:
+                votes.append({
+                    "observer": observer, "domain": domain,
+                    "delivered": False,
+                })
+                continue
+            counts = dict(expected)
+            forged = ((case == "one_faulty" and observer == "tap-epc")
+                      or (case == "two_colluding" and observer in
+                          ("tap-epc", "tap-5gc"))
+                      or (case == "mixed" and observer == "tap-epc")
+                      or (case == "bad_mac" and observer == "tap-epc"))
+            if forged:
+                counts["fabricated"] = counts.get("fabricated", 0) + 5
+            timestamp = now - 2000 if case == "stale" and observer == "tap-epc" else now
+            # Intentional on-path corruption must NOT be re-signed.
+            signed_counts = dict(expected) if case == "bad_mac" and observer == "tap-epc" else counts
+            mac = sign_vote(self._observer_key, observer, node, nonce,
+                            timestamp, signed_counts)
+            votes.append({
+                "observer": observer, "domain": domain, "node": node,
+                "nonce": nonce, "at_ms": timestamp, "counts": counts,
+                "mac": mac, "delivered": True,
+            })
+        decision = consensus_from_votes(
+            votes, self._observer_key, node, nonce, now)
+        return votes, decision
+
+    def _poll(self, now: int) -> None:
+        """Measure control-channel, signed CU and separately verified witnesses."""
         for node in ("msc2", "sgsn3", "mme4", "dra", "pcscf", "amf5"):
             nonce = "cu-" + str(now)
-            source_generation = self.net.nodes[node].generation
-            # Independent loss sample: one modeled control request hop and
-            # one response hop; this is not an operator path measurement.
-            cu_delivered = all(
-                self._cu_rng.random() >= self.scenario.loss_rate
-                for _ in range(2))
-            if not cu_delivered:
+            generation = self.net.nodes[node].generation
+            actual = dict(self._node_counts[node])
+            expected = dict(self._independent_counts[node])
+            votes, quorum = self._observer_votes(now, node, nonce, expected)
+            # Request and response independently lost; never label missing
+            # control telemetry as compromise merely from the timeout.
+            delivered = all(
+                self._cu_rng.random() >= self.scenario.loss_rate for _ in range(2))
+            if not delivered:
                 self._cu_loss_streak[node] += 1
                 self.events.append(Event(
-                    now, source_generation, "CU", "CU.Reconciliation",
+                    now, generation, "CU", "CU.Reconciliation",
                     node, "observer", "", nonce, "MISSING", 0, [node],
                     "Research control-unit method (not 3GPP wire protocol)",
                     False, {
-                        "cu_delivered": False,
-                        "mac_valid": None,
-                        "reported_total": None,
-                        "observed_total": None,
+                        "cu_delivered": False, "mac_valid": None,
+                        "reported_total": None, "observed_total": None,
                         "observer_consistent": None,
+                        "observer_votes": votes, "observer_quorum": quorum,
                         "transport_loss_observed": True,
                         "cu_consecutive_losses": self._cu_loss_streak[node],
                         "cu_staleness_ms": now - self._cu_last_success.get(node, 0),
@@ -587,46 +642,49 @@ class Simulator:
                 continue
             self._cu_loss_streak[node] = 0
             self._cu_last_success[node] = now
-            actual = dict(self._node_counts[node])
-            observed = dict(self._independent_counts[node])
             reported = dict(actual)
             signature = self._sign(node, nonce, reported)
             if node in self._compromised:
-                # A compromised signer can authenticate a false report; only
-                # the observer's independent counters expose the discrepancy.
+                # Compromised CU signer can attest invented counters.
                 reported["fabricated"] = reported.get("fabricated", 0) + 5
                 signature = self._sign(node, nonce, reported)
             elif node in self._wire_tampered:
-                # On-path alteration is not attributed to reporting-node compromise.
+                # On-path alteration cannot produce a valid reporter MAC.
                 reported["fabricated"] = reported.get("fabricated", 0) + 1
-            verified = hmac.compare_digest(
+            valid_mac = hmac.compare_digest(
                 signature, self._sign(node, nonce, reported))
-            consistent = reported == observed
-            status = "MATCH" if verified and consistent else "MISMATCH"
-            if verified and not consistent:
+            majority_counts = quorum["consensus_counts"] if quorum["quorum"] else None
+            comparable = majority_counts is not None
+            consistent = (reported == majority_counts) if comparable else None
+            outcome = ("UNVERIFIED" if not comparable and valid_mac
+                       else "MATCH" if valid_mac and consistent
+                       else "MISMATCH")
+            if valid_mac and consistent is False:
                 self._alert(now, "cu_discrepancy", node,
-                            "Authenticated node report differs from independent transit observation",
+                            "Authenticated report diverges from observer majority",
                             nonce, dedupe=True)
-            if not verified:
+            if not valid_mac:
                 self._alert(now, "cu_integrity", node,
-                            "Control-unit MAC verification failed; source not attributed",
+                            "Control-unit MAC verification failed; no node attribution",
                             nonce, dedupe=True)
             self.events.append(Event(
-                now, source_generation, "CU", "CU.Reconciliation",
-                node, "observer", "", nonce, status, 0, [node],
+                now, generation, "CU", "CU.Reconciliation",
+                node, "observer", "", nonce, outcome, 0, [node],
                 "Research control-unit method (not 3GPP wire protocol)",
                 False, {
-                    "cu_delivered": True,
+                    "cu_delivered": True, "reported_counts": reported,
                     "reported_total": sum(reported.values()),
-                    "observed_total": sum(observed.values()),
+                    "observed_total": sum(majority_counts.values())
+                    if comparable else None,
                     "observer_consistent": consistent,
                     "counter_disagreement": sum(
-                        abs(reported.get(op, 0) - observed.get(op, 0))
-                        for op in set(reported) | set(observed)),
-                    "mac_valid": verified,
+                        abs(reported.get(op, 0) - majority_counts.get(op, 0))
+                        for op in set(reported) | set(majority_counts))
+                    if comparable else None,
+                    "observer_votes": votes, "observer_quorum": quorum,
+                    "mac_valid": valid_mac,
                     "transport_loss_observed": False,
-                    "cu_consecutive_losses": 0,
-                    "cu_staleness_ms": 0,
+                    "cu_consecutive_losses": 0, "cu_staleness_ms": 0,
                     "cu_processing_delay_ms": 5 if node in ("msc2", "sgsn3") else 2,
                 },
             ))
@@ -719,7 +777,10 @@ class Simulator:
             e.generation for e in self.events
             if e.protocol not in ("CU", "INTERWORKING")
         )
-        node_evidence = inspect_cu_events([asdict(e) for e in self.events])
+        node_evidence = inspect_cu_events(
+            [asdict(e) for e in self.events],
+            observer_root_key=self._observer_key,
+        )
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)

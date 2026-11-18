@@ -10,7 +10,6 @@ from collections import defaultdict
 from statistics import mean
 from typing import Any
 
-from .control import inspect_cu_events
 from .experiment import rates
 from .simulator import Scenario, Simulator
 
@@ -40,7 +39,7 @@ def node_study(seeds: tuple[int, ...] = (42, 43, 44, 45),
                     inject_attacks=False, node_case=case,
                 )).run()
                 # Independent detector sees only CU event data.
-                findings = inspect_cu_events(simulated["events"])["nodes"]
+                findings = simulated["node_evidence"]["nodes"]
                 for finding in findings:
                     node = finding["node"]
                     is_report_case = case in ("report", "both") and node == TARGETS["report"]

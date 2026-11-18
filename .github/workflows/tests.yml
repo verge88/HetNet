@@ -56,3 +56,15 @@ jobs:
           name: hetnet-stage4-cu-evidence
           path: results/stage4/
           if-no-files-found: error
+      - name: Stage 5 observer quorum fault matrix
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case none --observer-case one_faulty --output results/stage5/single-fault
+          python -m hetnet zone-study --duration 18 --subscribers 8 --start-seed 42 --runs 6 --observer-loss-rates 0,0.2,0.45 --output results/stage5/study
+      - name: Archive stage 5 observer fault results
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage5-observer-quorum
+          path: results/stage5/
+          if-no-files-found: error
