@@ -97,10 +97,14 @@ def inspect_cu_events(events: list[dict[str, Any]],
             category = "unconfirmed_divergence"
             reason = ("Insufficient independent observations to confirm "
                       "a persistent report discrepancy")
+        elif state.missing and state.authenticated_matches:
+            category = "consistent_with_loss"
+            reason = ("Available authenticated reports match independent "
+                      "observations; some control-unit responses were lost")
         elif state.missing:
             category = "telemetry_degraded"
-            reason = ("Some control-unit replies are missing; transport "
-                      "degradation alone is not evidence of node compromise")
+            reason = ("Control-unit replies are missing and trustworthy "
+                      "comparison is unavailable; this is not proof of intrusion")
         elif state.authenticated_matches:
             category = "consistent"
             reason = "Received authenticated reports match transit observations"
@@ -134,7 +138,8 @@ def inspect_cu_events(events: list[dict[str, Any]],
             "report_integrity_failure":
                 "possible transport modification; not equivalent to node compromise",
             "unconfirmed_divergence": "single signed discrepancy, not yet persistent",
-            "telemetry_degraded": "missing CU; transport diagnosis first",
+            "telemetry_degraded": "missing CU with no trustworthy comparison",
+            "consistent_with_loss": "received CU matches despite separate missing polls",
             "consistent": "no CU inconsistency in received reports",
             "insufficient_evidence": "cannot decide",
         },
