@@ -181,6 +181,7 @@ class Scenario:
     traffic_ar1_phi: float = 0.7
     transaction_timeout_ms: int = 2000
     traffic_rates: dict[str, float] = field(default_factory=dict)
+    node_case: str = "auto"  # auto, none, report, tamper, both
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -201,6 +202,8 @@ class Scenario:
             raise ValueError("traffic_ar1_phi must be in [0,1)")
         if self.transaction_timeout_ms < 200:
             raise ValueError("transaction_timeout_ms must be >= 200")
+        if self.node_case not in ("auto", "none", "report", "tamper", "both"):
+            raise ValueError("node_case must be auto, none, report, tamper or both")
 
 
 @dataclass
@@ -658,7 +661,12 @@ class Simulator:
             self._push(time_ms, "poll", None)
         if self.scenario.inject_attacks:
             self._push(int(self.scenario.duration_s * 650), "inject", None)
+        node_case = self.scenario.node_case
+        if node_case == "auto":
+            node_case = "both" if self.scenario.inject_attacks else "none"
+        if node_case in ("report", "both"):
             self._push(int(self.scenario.duration_s * 720), "compromise", "dra")
+        if node_case in ("tamper", "both"):
             self._push(int(self.scenario.duration_s * 740), "wire_tamper", "msc2")
 
     def run(self) -> dict[str, Any]:
