@@ -1,0 +1,669 @@
+{
+  "schema_version": 2,
+  "source_id": "episodic_holdout_beta",
+  "lineage_id": "episodic_lineage_beta",
+  "provenance": "synthetic",
+  "annotation_basis": "synthetic_injection",
+  "measurements": [
+    {
+      "node": "msc2",
+      "interval_index": 0,
+      "operation_class": "MAP",
+      "reference_count": 233,
+      "reported_count": 233,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 0,
+      "operation_class": "MAP",
+      "reference_count": 258,
+      "reported_count": 258,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 0,
+      "operation_class": "Diameter",
+      "reference_count": 283,
+      "reported_count": 283,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 0,
+      "operation_class": "Diameter",
+      "reference_count": 308,
+      "reported_count": 308,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 0,
+      "operation_class": "SIP",
+      "reference_count": 333,
+      "reported_count": 333,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 0,
+      "operation_class": "SBI",
+      "reference_count": 358,
+      "reported_count": 358,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 1,
+      "operation_class": "MAP",
+      "reference_count": 242,
+      "reported_count": 243,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 1,
+      "operation_class": "MAP",
+      "reference_count": 267,
+      "reported_count": 268,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 1,
+      "operation_class": "Diameter",
+      "reference_count": 292,
+      "reported_count": 293,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 1,
+      "operation_class": "Diameter",
+      "reference_count": 317,
+      "reported_count": 318,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 1,
+      "operation_class": "SIP",
+      "reference_count": 342,
+      "reported_count": 343,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 1,
+      "operation_class": "SBI",
+      "reference_count": 367,
+      "reported_count": 368,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 2,
+      "operation_class": "MAP",
+      "reference_count": 251,
+      "reported_count": 251,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 2,
+      "operation_class": "MAP",
+      "reference_count": 276,
+      "reported_count": 276,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 2,
+      "operation_class": "Diameter",
+      "reference_count": 301,
+      "reported_count": 325,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 2,
+      "operation_class": "Diameter",
+      "reference_count": 326,
+      "reported_count": 326,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 2,
+      "operation_class": "SIP",
+      "reference_count": 351,
+      "reported_count": 351,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 2,
+      "operation_class": "SBI",
+      "reference_count": 376,
+      "reported_count": 376,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 3,
+      "operation_class": "MAP",
+      "reference_count": 260,
+      "reported_count": 260,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 3,
+      "operation_class": "MAP",
+      "reference_count": 285,
+      "reported_count": 285,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 3,
+      "operation_class": "Diameter",
+      "reference_count": 310,
+      "reported_count": 334,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 3,
+      "operation_class": "Diameter",
+      "reference_count": 335,
+      "reported_count": 335,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 3,
+      "operation_class": "SIP",
+      "reference_count": 360,
+      "reported_count": 360,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 3,
+      "operation_class": "SBI",
+      "reference_count": 385,
+      "reported_count": 385,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 4,
+      "operation_class": "MAP",
+      "reference_count": 269,
+      "reported_count": 269,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 4,
+      "operation_class": "MAP",
+      "reference_count": 294,
+      "reported_count": 294,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 4,
+      "operation_class": "Diameter",
+      "reference_count": 319,
+      "reported_count": 319,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 4,
+      "operation_class": "Diameter",
+      "reference_count": 344,
+      "reported_count": 344,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 4,
+      "operation_class": "SIP",
+      "reference_count": 369,
+      "reported_count": 369,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 4,
+      "operation_class": "SBI",
+      "reference_count": 394,
+      "reported_count": 394,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 5,
+      "operation_class": "MAP",
+      "reference_count": 278,
+      "reported_count": 306,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 5,
+      "operation_class": "MAP",
+      "reference_count": 303,
+      "reported_count": 333,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 5,
+      "operation_class": "Diameter",
+      "reference_count": 328,
+      "reported_count": 361,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 5,
+      "operation_class": "Diameter",
+      "reference_count": 353,
+      "reported_count": 388,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 5,
+      "operation_class": "SIP",
+      "reference_count": 378,
+      "reported_count": 416,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 5,
+      "operation_class": "SBI",
+      "reference_count": 403,
+      "reported_count": 443,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 6,
+      "operation_class": "MAP",
+      "reference_count": 287,
+      "reported_count": 316,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 6,
+      "operation_class": "MAP",
+      "reference_count": 312,
+      "reported_count": 343,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 6,
+      "operation_class": "Diameter",
+      "reference_count": 337,
+      "reported_count": 371,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 6,
+      "operation_class": "Diameter",
+      "reference_count": 362,
+      "reported_count": 398,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 6,
+      "operation_class": "SIP",
+      "reference_count": 387,
+      "reported_count": 426,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 6,
+      "operation_class": "SBI",
+      "reference_count": 412,
+      "reported_count": 453,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 7,
+      "operation_class": "MAP",
+      "reference_count": 296,
+      "reported_count": 326,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 7,
+      "operation_class": "MAP",
+      "reference_count": 321,
+      "reported_count": 353,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 7,
+      "operation_class": "Diameter",
+      "reference_count": 346,
+      "reported_count": 381,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 7,
+      "operation_class": "Diameter",
+      "reference_count": 371,
+      "reported_count": 408,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 7,
+      "operation_class": "SIP",
+      "reference_count": 396,
+      "reported_count": 460,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 7,
+      "operation_class": "SBI",
+      "reference_count": 421,
+      "reported_count": 463,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 8,
+      "operation_class": "MAP",
+      "reference_count": 305,
+      "reported_count": 336,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 8,
+      "operation_class": "MAP",
+      "reference_count": 330,
+      "reported_count": 363,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 8,
+      "operation_class": "Diameter",
+      "reference_count": 355,
+      "reported_count": 391,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 8,
+      "operation_class": "Diameter",
+      "reference_count": 380,
+      "reported_count": 418,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 8,
+      "operation_class": "SIP",
+      "reference_count": 405,
+      "reported_count": 446,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 8,
+      "operation_class": "SBI",
+      "reference_count": 430,
+      "reported_count": 473,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 9,
+      "operation_class": "MAP",
+      "reference_count": 314,
+      "reported_count": 314,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 9,
+      "operation_class": "MAP",
+      "reference_count": 339,
+      "reported_count": 339,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 9,
+      "operation_class": "Diameter",
+      "reference_count": 364,
+      "reported_count": 364,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 9,
+      "operation_class": "Diameter",
+      "reference_count": 389,
+      "reported_count": 389,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 9,
+      "operation_class": "SIP",
+      "reference_count": 414,
+      "reported_count": 414,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 9,
+      "operation_class": "SBI",
+      "reference_count": 439,
+      "reported_count": 439,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 10,
+      "operation_class": "MAP",
+      "reference_count": 323,
+      "reported_count": 324,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 10,
+      "operation_class": "MAP",
+      "reference_count": 348,
+      "reported_count": 349,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 10,
+      "operation_class": "Diameter",
+      "reference_count": 373,
+      "reported_count": 374,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 10,
+      "operation_class": "Diameter",
+      "reference_count": 398,
+      "reported_count": 399,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 10,
+      "operation_class": "SIP",
+      "reference_count": 423,
+      "reported_count": 424,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 10,
+      "operation_class": "SBI",
+      "reference_count": 448,
+      "reported_count": 449,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "msc2",
+      "interval_index": 11,
+      "operation_class": "MAP",
+      "reference_count": 332,
+      "reported_count": 332,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "sgsn3",
+      "interval_index": 11,
+      "operation_class": "MAP",
+      "reference_count": 357,
+      "reported_count": 357,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "mme4",
+      "interval_index": 11,
+      "operation_class": "Diameter",
+      "reference_count": 382,
+      "reported_count": 382,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "dra",
+      "interval_index": 11,
+      "operation_class": "Diameter",
+      "reference_count": 407,
+      "reported_count": 407,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "pcscf",
+      "interval_index": 11,
+      "operation_class": "SIP",
+      "reference_count": 432,
+      "reported_count": 432,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    },
+    {
+      "node": "amf5",
+      "interval_index": 11,
+      "operation_class": "SBI",
+      "reference_count": 457,
+      "reported_count": 457,
+      "cu_verified_claim": true,
+      "quorum_verified_claim": true
+    }
+  ],
+  "episodes": [
+    {
+      "node": "mme4",
+      "start_interval": 2,
+      "end_interval": 4
+    },
+    {
+      "node": "pcscf",
+      "start_interval": 7,
+      "end_interval": 8
+    }
+  ]
+}
