@@ -229,6 +229,11 @@ class DetectionTests(unittest.TestCase):
         clean = [r for r in report["per_source"]
                  if r["source_id"] == "lab_holdout_gamma"]
         self.assertTrue(all(r["tp"] == 2 for r in clean))
+        distorted = {r["detector"]: r for r in degraded}
+        self.assertEqual(distorted["cu_claimed_baseline"]["fp"], 3)
+        self.assertEqual(distorted["zone_absolute"]["fp"], 3)
+        self.assertEqual(distorted["zone_peer"]["fp"], 0)
+        self.assertEqual(distorted["zone_peer"]["tn"], 3)
 
     def test_export_omits_individual_rows_and_labels(self):
         report = run_labeled_eval([ALPHA, BETA], [GAMMA, DELTA])
