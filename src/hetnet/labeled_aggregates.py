@@ -13,14 +13,16 @@ from __future__ import annotations
 from collections import defaultdict
 import hashlib
 import json
-import math
 from pathlib import Path
-from statistics import mean, median
+from statistics import median
 from typing import Any
 
 from .external_aggregates import MAX_FILE_BYTES, SOURCE_ID, _strict_pairs
 from .fault_domains import MONITORED_NODES
-from .zonal_detection import DETECTORS, _metrics
+from .zonal_detection import _metrics
+
+# This externally supplied aggregate has NO actual HMACs. Do not call it signed.
+DETECTORS = ("cu_claimed_baseline", "zone_absolute", "zone_peer")
 
 FIELDS = frozenset((
     "schema_version", "source_id", "lineage_id", "provenance",
@@ -186,7 +188,7 @@ def aggregate_features(data: dict) -> dict[str, dict[str, float | None]]:
             }
     result = {}
     for node in MONITORED_NODES:
-        candidate = {"cu_signed_baseline": [],
+        candidate = {"cu_claimed_baseline": [],
                      "zone_absolute": [], "zone_peer": []}
         intervals = sorted(t for t in derived if node in derived[t])
         for first, second in zip(intervals, intervals[1:]):
@@ -197,7 +199,7 @@ def aggregate_features(data: dict) -> dict[str, dict[str, float | None]]:
                 if a[field] is not None and b[field] is not None:
                     candidate[field].append(
                         max(0.0, min(a[field], b[field])))
-            candidate["cu_signed_baseline"].append(
+            candidate["cu_claimed_baseline"].append(
                 float(a["zone_absolute"] > 0 and b["zone_absolute"] > 0))
         result[node] = {
             key: (max(values) if values else None)
@@ -258,7 +260,7 @@ def evaluate_labeled(train: list[dict], holdout: list[dict]) -> dict:
             for node in MONITORED_NODES:
                 score = prediction[node][detector]
                 available = score is not None
-                if detector == "cu_signed_baseline":
+                if detector == "cu_claimed_baseline":
                     detected = available and score > 0
                 else:
                     detected = (available and score >
@@ -285,7 +287,7 @@ def evaluate_labeled(train: list[dict], holdout: list[dict]) -> dict:
             "External provenance, independent ground truth, labels and flags are NOT verified",
             "Labels never feed detectors, but training clean status is user asserted",
             "Source IDs, lineages and fingerprints cannot prove no physical overlap",
-            "Unsigned aggregate comparison is not cryptographically verified CU",
+            "Claimed CU verification flags are not cryptographic evidence; cu_claimed_baseline is unsigned",
             "Raw measurements and per-node ground truths are never exported",
             "No real operator data present in repository demonstration",
             "No standalone 3GPP conformance or production ML claim",
