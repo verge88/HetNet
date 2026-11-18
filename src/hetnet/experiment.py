@@ -59,13 +59,15 @@ def rates(rows: list[dict[str, Any]]) -> dict[str, float | int]:
 def run_multiseed(duration_s: int = 18, subscribers: int = 8,
                   seeds: range | tuple[int, ...] = range(42, 52),
                   traffic_scale: float = 1.0,
-                  inject_attacks: bool = True) -> dict[str, Any]:
+                  inject_attacks: bool = True,
+                  traffic_rates: dict[str, float] | None = None) -> dict[str, Any]:
     run_rows = []
     per_stack: dict[str, list[dict[str, float | int]]] = defaultdict(list)
     for seed in seeds:
         result = Simulator(Scenario(
             duration_s=duration_s, subscribers=subscribers, seed=seed,
             traffic_scale=traffic_scale, inject_attacks=inject_attacks,
+            traffic_rates=traffic_rates or {},
         )).run()
         samples = list(classify_correlations(result).values())
         row = {"seed": seed, **rates(samples),

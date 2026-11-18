@@ -1,0 +1,30 @@
+{
+  "source": "synthetic demonstration: invented aggregate counts; not operator data",
+  "measurements": [
+    {
+      "domain": "map_2g",
+      "duration_seconds": 600,
+      "request_count": 96
+    },
+    {
+      "domain": "map_3g",
+      "duration_seconds": 600,
+      "request_count": 102
+    },
+    {
+      "domain": "diameter_4g",
+      "duration_seconds": 600,
+      "request_count": 135
+    },
+    {
+      "domain": "sip_ims",
+      "duration_seconds": 600,
+      "request_count": 84
+    },
+    {
+      "domain": "sbi_5g",
+      "duration_seconds": 600,
+      "request_count": 111
+    }
+  ]
+}

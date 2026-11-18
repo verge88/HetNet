@@ -179,6 +179,7 @@ class Scenario:
     traffic_peak_hour: float = 18.0
     traffic_ar1_phi: float = 0.7
     transaction_timeout_ms: int = 2000
+    traffic_rates: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -268,6 +269,7 @@ class Simulator:
             amplitude=self.scenario.traffic_amplitude,
             peak_hour=self.scenario.traffic_peak_hour,
             phi=self.scenario.traffic_ar1_phi,
+            rates=self.scenario.traffic_rates,
         )
         self._link_available_ms: dict[tuple[str, str], int] = defaultdict(int)
         self._queue_drops = 0

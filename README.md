@@ -60,3 +60,20 @@ python -m unittest discover -s tests -v
 ```
 
 Полные допущения и ограничения: **[docs/validation-stage2.md](docs/validation-stage2.md)**. Генератор и его параметры являются новыми синтетическими допущениями: **это не** воспроизведение исходных 24-часовых наборов из диссертации и **не** сертифицированная протокольная реализация.
+
+## Этап 3 — офлайн-проверка форматов и независимая оценка по эпизодам
+
+Новые команды работают **только с локальными файлами или синтетическими событиями**. Никакие запросы в реальные мобильные сети не отправляются.
+
+```bash
+# Реальный бинарный envelope Diameter v1 (синтетические поля, без AVP)
+python -m hetnet wirecheck --protocol diameter --hex 010000148000013e010000230000000100000002
+# Калибровка по вымышленным агрегированным счётчикам
+python -m hetnet calibrate --input examples/synthetic_aggregate_counts.json --output results/calibration.json
+# Научная оценка по эпизодам: обучение на одних seed, тест на других
+python -m hetnet validate --duration 18 --subscribers 8 --traffic-profile results/calibration.json --output results/stage3
+# Только легитимные события: FPR при потере пакетов и росте нагрузки
+python -m hetnet stress --duration 18 --subscribers 8 --traffic-profile results/calibration.json --output results/stress
+```
+
+Подробнее: [методика этапа 3](docs/validation-stage3.md) и [фактические результаты CI](docs/results-stage3.md). Валидаторы реализуют **ограниченный синтаксический слой** SIP, Diameter/AVP, GTPv2-C и HTTP/2; их принятие сообщения **не означает** полного соответствия RFC/3GPP или сетевой совместимости. Отсутствуют MAP/TCAP BER, реальная NGAP/NAS и 5G SBI/OpenAPI. Эксперимент на синтетических эпизодах специально отделён от метрик отдельных сообщений и от безопасности КИЕ.
