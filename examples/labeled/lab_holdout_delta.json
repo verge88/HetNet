@@ -20,24 +20,24 @@
       "operation_class": "MAP",
       "reference_count": 213,
       "reported_count": 213,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "mme4",
       "interval_index": 0,
       "operation_class": "Diameter",
       "reference_count": 230,
-      "reported_count": 230,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 245,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "dra",
       "interval_index": 0,
       "operation_class": "Diameter",
       "reference_count": 247,
-      "reported_count": 247,
+      "reported_count": 258,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -46,9 +46,9 @@
       "interval_index": 0,
       "operation_class": "SIP",
       "reference_count": 264,
-      "reported_count": 265,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 280,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "amf5",
@@ -74,24 +74,24 @@
       "operation_class": "MAP",
       "reference_count": 220,
       "reported_count": 220,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "mme4",
       "interval_index": 1,
       "operation_class": "Diameter",
       "reference_count": 237,
-      "reported_count": 238,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 253,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "dra",
       "interval_index": 1,
       "operation_class": "Diameter",
       "reference_count": 254,
-      "reported_count": 254,
+      "reported_count": 265,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -100,9 +100,9 @@
       "interval_index": 1,
       "operation_class": "SIP",
       "reference_count": 271,
-      "reported_count": 271,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 286,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "amf5",
@@ -128,24 +128,24 @@
       "operation_class": "MAP",
       "reference_count": 227,
       "reported_count": 227,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "mme4",
       "interval_index": 2,
       "operation_class": "Diameter",
       "reference_count": 244,
-      "reported_count": 244,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 259,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "dra",
       "interval_index": 2,
       "operation_class": "Diameter",
       "reference_count": 261,
-      "reported_count": 261,
+      "reported_count": 272,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -154,9 +154,9 @@
       "interval_index": 2,
       "operation_class": "SIP",
       "reference_count": 278,
-      "reported_count": 279,
-      "cu_verified_claim": true,
-      "quorum_verified_claim": true
+      "reported_count": 294,
+      "cu_verified_claim": false,
+      "quorum_verified_claim": false
     },
     {
       "node": "amf5",
