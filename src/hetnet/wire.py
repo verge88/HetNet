@@ -1,6 +1,7 @@
 """Bounded offline validators for signaling envelopes, not production codecs."""
 from __future__ import annotations
 import re
+import hashlib
 from typing import Any
 
 MAX_INPUT = 1_048_576
@@ -167,7 +168,9 @@ def parse_sip(data: bytes) -> dict[str, Any]:
         raise DecodeError("SIP body length mismatch")
     return {
         "protocol": "sip", "method": method, "status": status,
-        "call_id": headers["call-id"][0], "cseq": int(cseq[0]),
+        "call_id_sha256": hashlib.sha256(
+            headers["call-id"][0].encode("latin-1")).hexdigest(),
+        "cseq": int(cseq[0]),
         "cseq_method": cseq[1], "via_count": len(headers["via"]),
         "body_length": len(body), "reference": "RFC 3261 §§7,8,20",
     }
