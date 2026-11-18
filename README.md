@@ -77,3 +77,27 @@ python -m hetnet stress --duration 18 --subscribers 8 --traffic-profile results/
 ```
 
 Подробнее: [методика этапа 3](docs/validation-stage3.md) и [фактические результаты CI](docs/results-stage3.md). Валидаторы реализуют **ограниченный синтаксический слой** SIP, Diameter/AVP, GTPv2-C и HTTP/2; их принятие сообщения **не означает** полного соответствия RFC/3GPP или сетевой совместимости. Отсутствуют MAP/TCAP BER, реальная NGAP/NAS и 5G SBI/OpenAPI. Эксперимент на синтетических эпизодах специально отделён от метрик отдельных сообщений и от безопасности КИЕ.
+
+## Этап 4 — доказательные признаки контроля КИЕ и потери
+
+Симулятор отдельно отслеживает: (1) корректно подписанный, но не
+соответствующий независимому учёту отчёт узла, (2) нарушение
+подписи при изменении контрольного сообщения в пути и
+(3) обычную потерю контрольного ответа. Выводы основаны на
+отчётах CU.Reconciliation; событие потери само по себе не доказывает
+компрометацию.
+
+    python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case report --output results/report-only
+    python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case tamper --output results/tamper-only
+    python -m hetnet node-study --duration 18 --subscribers 8 --start-seed 42 --runs 6 --loss-rates 0,0.1,0.35 --output results/node-study
+
+Экспорт: node_evidence.json и node_study.json. На веб-панели отображаются
+свидетельства для каждого узла и доля доставки КИЕ.
+
+**[Методика этапа 4](docs/validation-stage4.md)** /
+**[Результаты эксперимента](docs/results-stage4.md)**.
+
+КИЕ — исследовательский метод, не спецификация 3GPP. Различие
+подписанного отчёта и независимого наблюдения остаётся подозрением,
+а не доказательством взлома. Совместимость со стеком реального
+оператора по-прежнему не заявляется.
