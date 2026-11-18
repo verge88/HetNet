@@ -10,7 +10,7 @@
       "interval_index": 0,
       "operation_class": "MAP",
       "reference_count": 179,
-      "reported_count": 179,
+      "reported_count": 194,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -55,7 +55,7 @@
       "interval_index": 0,
       "operation_class": "SBI",
       "reference_count": 264,
-      "reported_count": 265,
+      "reported_count": 280,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -64,7 +64,7 @@
       "interval_index": 1,
       "operation_class": "MAP",
       "reference_count": 186,
-      "reported_count": 186,
+      "reported_count": 201,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -109,7 +109,7 @@
       "interval_index": 1,
       "operation_class": "SBI",
       "reference_count": 271,
-      "reported_count": 271,
+      "reported_count": 286,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -118,7 +118,7 @@
       "interval_index": 2,
       "operation_class": "MAP",
       "reference_count": 193,
-      "reported_count": 193,
+      "reported_count": 208,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
@@ -163,7 +163,7 @@
       "interval_index": 2,
       "operation_class": "SBI",
       "reference_count": 278,
-      "reported_count": 279,
+      "reported_count": 294,
       "cu_verified_claim": true,
       "quorum_verified_claim": true
     },
