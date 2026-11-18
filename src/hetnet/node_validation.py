@@ -10,7 +10,6 @@ from collections import defaultdict
 from statistics import mean
 from typing import Any
 
-from .control import inspect_cu_events
 from .experiment import rates
 from .simulator import Scenario, Simulator
 
