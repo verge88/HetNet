@@ -47,6 +47,23 @@ class TransactionTests(unittest.TestCase):
         self.assertFalse(ledger.inspect_response(
             200, "SIP.200_INVITE", "scscf", "pcscf", "ue", "call").accepted)
 
+    def test_forged_ack_cannot_enable_bye(self) -> None:
+        ledger = ProcedureLedger()
+        bad_ack = ledger.inspect_request(
+            50, "SIP.ACK", None, "pcscf", "scscf", "ue", "forged")
+        self.assertFalse(bad_ack.accepted)
+        self.assertFalse(ledger.inspect_request(
+            60, "SIP.BYE", "SIP.200_BYE", "pcscf", "scscf", "ue",
+            "forged").accepted)
+
+    def test_duplicate_ack_is_rejected(self) -> None:
+        ledger = ProcedureLedger()
+        ledger.completed[("call", "ue")] = {"SIP.INVITE"}
+        self.assertTrue(ledger.inspect_request(
+            10, "SIP.ACK", None, "pcscf", "scscf", "ue", "call").accepted)
+        self.assertFalse(ledger.inspect_request(
+            20, "SIP.ACK", None, "pcscf", "scscf", "ue", "call").accepted)
+
     def test_reply_reverse_endpoint_and_timeout(self) -> None:
         ledger = ProcedureLedger(timeout_ms=300)
         ledger.inspect_request(0, "Diameter.AIR", "Diameter.AIA",
