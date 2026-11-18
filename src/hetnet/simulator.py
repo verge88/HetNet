@@ -18,7 +18,8 @@ from .procedures import ProcedureLedger
 from .traffic import TrafficGenerator
 from .observations import aggregate
 from .control import inspect_cu_events
-from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes
+from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes, count_distance
+from .probes import ProbeSampler
 from .fault_domains import (MONITORED_NODES, FAULT_CASES,
                             CommonFaultSchedule, CommonFault)
 from .domain_analysis import analyze_domain_correlations
@@ -191,6 +192,8 @@ class Scenario:
     report_fault_nodes: tuple[str, ...] = ()
     shared_zone_case: str = "none"
     shared_zone_probability: float = 1.0
+    observer_capture_miss: float = 0.0
+    quorum_max_count_delta: int = 0
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -227,6 +230,12 @@ class Scenario:
             raise ValueError("Invalid shared_zone_case")
         if not 0 <= self.shared_zone_probability <= 1:
             raise ValueError("shared_zone_probability must be in [0,1]")
+        if (type(self.observer_capture_miss) not in (int, float)
+                or not 0 <= self.observer_capture_miss <= 0.5):
+            raise ValueError("observer_capture_miss must be in [0,0.5]")
+        if (type(self.quorum_max_count_delta) is not int
+                or not 0 <= self.quorum_max_count_delta <= 100):
+            raise ValueError("quorum_max_count_delta must be an integer in [0,100]")
 
 
 @dataclass
@@ -308,6 +317,8 @@ class Simulator:
         self._wire_tampered: set[str] = set()
         self._cu_rng = random.Random(self.scenario.seed ^ 0xC0FFEE)
         self._observer_rng = random.Random(self.scenario.seed ^ 0x0B5E77)
+        self._probes = ProbeSampler(
+            self.scenario.seed, self.scenario.observer_capture_miss)
         self._common_faults = CommonFaultSchedule(
             seed=self.scenario.seed, kind=self.scenario.shared_zone_case,
             probability=self.scenario.shared_zone_probability,
@@ -614,7 +625,9 @@ class Simulator:
                     "delivered": False,
                 })
                 continue
-            counts = dict(expected)
+            # Each virtual sensor independently samples the same synthetic
+            # transit event count; independent noise != independent hardware.
+            counts = self._probes.observe(node, observer, now, expected)
             forged = ((case == "one_faulty" and observer == "tap-epc")
                       or (case == "two_colluding" and observer in
                           ("tap-epc", "tap-5gc"))
@@ -633,7 +646,8 @@ class Simulator:
                 "mac": mac, "delivered": True,
             })
         decision = consensus_from_votes(
-            votes, self._observer_key, node, nonce, now)
+            votes, self._observer_key, node, nonce, now,
+            max_count_delta=self.scenario.quorum_max_count_delta)
         return votes, decision
 
     def _poll(self, now: int) -> None:
@@ -684,7 +698,9 @@ class Simulator:
                 signature, self._sign(node, nonce, reported))
             majority_counts = quorum["consensus_counts"] if quorum["quorum"] else None
             comparable = majority_counts is not None
-            consistent = (reported == majority_counts) if comparable else None
+            consistent = (count_distance(reported, majority_counts)
+                          <= self.scenario.quorum_max_count_delta
+                          if comparable else None)
             outcome = ("UNVERIFIED" if not comparable and valid_mac
                        else "MATCH" if valid_mac and consistent
                        else "MISMATCH")
@@ -811,9 +827,11 @@ class Simulator:
         node_evidence = inspect_cu_events(
             [asdict(e) for e in self.events],
             observer_root_key=self._observer_key,
+            max_count_delta=self.scenario.quorum_max_count_delta,
         )
         domain_evidence = analyze_domain_correlations(
-            [asdict(e) for e in self.events], self._observer_key)
+            [asdict(e) for e in self.events], self._observer_key,
+            max_count_delta=self.scenario.quorum_max_count_delta)
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
