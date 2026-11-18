@@ -74,7 +74,12 @@ class ProcedureLedger:
             self.rejected_invariants += 1
             return Decision(False, "sip_dialog_state", "BYE requires accepted ACK")
         if operation == "SIP.ACK":
-            # Correlation with 2xx INVITE is managed by the caller.
+            # An ACK for a successful INVITE must be correlated with that
+            # very dialog; a fabricated ACK must not authorize a later BYE.
+            if "SIP.INVITE" not in steps or correlation_id in self.sip_acked:
+                self.rejected_invariants += 1
+                return Decision(False, "sip_dialog_state",
+                                "ACK requires matched 2xx INVITE and must be unique")
             self.sip_acked.add(correlation_id)
         if response:
             if any(tx.correlation_id == correlation_id
