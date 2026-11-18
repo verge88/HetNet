@@ -178,7 +178,27 @@ class ObserverIntegrationTests(unittest.TestCase):
         for item in event_copy:
             item["attack"] = True
             item["detail"]["attack"] = False
-        self.assertEqual(r["node_evidence"], inspect_cu_events(event_copy))
+        self.assertEqual(r["node_evidence"]["nodes"],
+                         inspect_cu_events(event_copy)["nodes"])
+
+    def test_external_quorum_summary_cannot_override_verified_votes(self):
+        sim = Simulator(Scenario(
+            duration_s=18, subscribers=8, seed=42,
+            inject_attacks=False, observer_case="one_faulty",
+        ))
+        result = sim.run()
+        modified = copy.deepcopy(result["events"])
+        for event in modified:
+            if event["protocol"] == "CU" and event["source"] == "dra":
+                event["detail"]["observer_quorum"] = {
+                    "quorum": True, "consensus_counts": {"fabricated": 9999},
+                    "outlier_observers": [], "valid_observers": [],
+                }
+        trusted = inspect_cu_events(
+            modified, observer_root_key=sim._observer_key)
+        self.assertEqual(trusted, result["node_evidence"])
+        untrusted = inspect_cu_events(modified)
+        self.assertNotEqual(untrusted["nodes"], trusted["nodes"])
 
     def test_invalid_observer_parameters(self):
         with self.assertRaises(ValueError):
