@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections import Counter
+
+from .consensus import consensus_from_votes
 from typing import Any
 
 
@@ -33,7 +35,8 @@ class _NodeState:
 
 
 def inspect_cu_events(events: list[dict[str, Any]],
-                      min_confirmations: int = 2) -> dict[str, Any]:
+                      min_confirmations: int = 2,
+                      *, observer_root_key: bytes | None = None) -> dict[str, Any]:
     """Classify nodes without consulting injection flags or security alerts.
 
     Repeated *authenticated* report-versus-observer disagreement supports
@@ -63,6 +66,12 @@ def inspect_cu_events(events: list[dict[str, Any]],
         state.delivered += 1
         state.missing_streak = 0
         vote_quorum = detail.get("observer_quorum")
+        if observer_root_key is not None:
+            # Never treat an exported JSON quorum claim as trusted when an
+            # independently held verifier key is available.
+            vote_quorum = consensus_from_votes(
+                detail.get("observer_votes", []), observer_root_key,
+                node, event["correlation_id"], event["time_ms"])
         if isinstance(vote_quorum, dict):
             state.observer_outliers.update(vote_quorum.get("outlier_observers", []))
             state.observer_invalid.update(vote_quorum.get("invalid_observers", []))
@@ -184,7 +193,9 @@ def inspect_cu_events(events: list[dict[str, Any]],
             "last_observed_ms": state.last_ms,
         })
     return {
-        "method": "CU+independent-transit evidence, not attack labels",
+        "method": ("CU+independent-transit signed witness verification"
+                   if observer_root_key is not None else
+                   "CU+preverified witness summaries; verify raw votes separately"),
         "min_confirmations": min_confirmations,
         "nodes": result,
         "categories": {
