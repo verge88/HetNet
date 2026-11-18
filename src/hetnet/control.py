@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from collections import Counter
 
-from .consensus import consensus_from_votes, count_distance
+from .consensus import consensus_from_votes, count_distance, counts_within
 from .attestation import verify_cu_report
 from typing import Any
 
@@ -108,7 +108,7 @@ def inspect_cu_events(events: list[dict[str, Any]],
                 continue
             state.observer_quorum_present += 1
             state.last_observer_quorum = True
-            mismatch = count_distance(reported_vector, majority) > max_count_delta
+            mismatch = not counts_within(reported_vector, majority, max_count_delta)
         else:
             # Backward-compatible Stage 4 hand-built CU events.
             reported = detail.get("reported_total")
