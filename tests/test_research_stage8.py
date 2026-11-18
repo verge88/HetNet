@@ -88,6 +88,28 @@ class SchemaSecurityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_dataset(item)
 
+    def test_rejects_unhashable_field_values(self):
+        candidates = (("provenance", ["synthetic"]),
+                      ("observer", ["tap-legacy"]),
+                      ("operation_class", ["MAP"]))
+        for field, value in candidates:
+            with self.subTest(field=field):
+                item = minimal()
+                if field == "provenance":
+                    item[field] = value
+                else:
+                    item["measurements"][0][field] = value
+                with self.assertRaises(ValueError):
+                    validate_dataset(item)
+
+    def test_duplicate_json_keys_are_rejected_before_validation(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "bad.json"
+            path.write_text('{"schema_version":1,"schema_version":1}',
+                            encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_dataset(path)
+
     def test_rejects_small_groups_and_invalid_counts(self):
         for field, value in (
             ("reference_count", 19), ("reference_count", True),
