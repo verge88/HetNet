@@ -14,6 +14,8 @@ from .episode import run_validation
 from .stress import benign_stress
 from .node_validation import node_study
 from .zone_validation import zone_study, OBSERVER_CASES
+from .cohort_validation import multi_node_study, COHORTS
+from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
 
@@ -24,6 +26,7 @@ def export_run(result: dict[str, Any], output: Path) -> None:
         ("summary.json", result["summary"]),
         ("alerts.json", result["alerts"]),
         ("node_evidence.json", result["node_evidence"]),
+        ("domain_evidence.json", result["domain_evidence"]),
         ("topology.json", {"nodes": result["nodes"], "links": result["links"]}),
     ):
         (output / name).write_text(
@@ -70,6 +73,10 @@ def main(argv: list[str] | None = None) -> None:
                      help="Independent monitoring domain fault scenario")
     run.add_argument("--observer-loss-rate", type=float, default=0.0,
                      help="Independent observer vote loss probability")
+    run.add_argument("--report-fault-nodes", default="",
+                     help="Comma-separated monitored nodes compromised after 72%%")
+    run.add_argument("--shared-zone-case", choices=FAULT_CASES, default="none")
+    run.add_argument("--shared-zone-probability", type=float, default=1.0)
     run.add_argument("--output", type=Path, default=Path("results"))
     run.add_argument("--traffic-scale", type=float, default=1.0)
     run.add_argument("--traffic-amplitude", type=float, default=0.35)
@@ -94,6 +101,18 @@ def main(argv: list[str] | None = None) -> None:
     validation.add_argument("--test-start-seed", type=int, default=42)
     validation.add_argument("--test-runs", type=int, default=10)
     validation.add_argument("--output", type=Path, default=Path("results/validation"))
+    cohort = commands.add_parser(
+        "cohort-study", help="Multi-generation CU nodes vs common observer-domain faults")
+    cohort.add_argument("--duration", type=int, default=18)
+    cohort.add_argument("--subscribers", type=int, default=8)
+    cohort.add_argument("--start-seed", type=int, default=42)
+    cohort.add_argument("--runs", type=int, default=6)
+    cohort.add_argument("--fault-cases", default=",".join(
+        ("none", "epc_outage", "epc_5gc_outage",
+         "epc_corrupt", "epc_5gc_collude")))
+    cohort.add_argument("--cohorts", default="none,legacy_5g,epc_ims")
+    cohort.add_argument("--shared-zone-probability", type=float, default=1.0)
+    cohort.add_argument("--output", type=Path, default=Path("results/cohort-study"))
     zones = commands.add_parser(
         "zone-study", help="2-of-3 monitoring quorum vs observer failures/collusion")
     zones.add_argument("--duration", type=int, default=18)
@@ -151,6 +170,25 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError, DecodeError) as error:
             parser.error(str(error))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "cohort-study":
+        if not 1 <= args.runs <= 100:
+            parser.error("--runs must be between 1 and 100")
+        try:
+            result = multi_node_study(
+                seeds=tuple(range(args.start_seed, args.start_seed + args.runs)),
+                fault_cases=tuple(c.strip() for c in args.fault_cases.split(",")),
+                cohort_names=tuple(c.strip() for c in args.cohorts.split(",")),
+                fault_probability=args.shared_zone_probability,
+                duration_s=args.duration, subscribers=args.subscribers,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "cohort_study.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(result["groups"], ensure_ascii=False, indent=2))
+        print("Exported cohort study to", args.output.resolve())
     elif args.command == "zone-study":
         if not 1 <= args.runs <= 100:
             parser.error("--runs must be between 1 and 100")
@@ -264,6 +302,10 @@ def main(argv: list[str] | None = None) -> None:
             node_case=args.node_case,
             observer_case=args.observer_case,
             observer_loss_rate=args.observer_loss_rate,
+            report_fault_nodes=tuple(filter(None, (
+                n.strip() for n in args.report_fault_nodes.split(",")))),
+            shared_zone_case=args.shared_zone_case,
+            shared_zone_probability=args.shared_zone_probability,
             traffic_scale=args.traffic_scale,
             traffic_amplitude=args.traffic_amplitude,
             traffic_peak_hour=args.peak_hour,

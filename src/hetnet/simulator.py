@@ -19,6 +19,9 @@ from .traffic import TrafficGenerator
 from .observations import aggregate
 from .control import inspect_cu_events
 from .consensus import OBSERVER_DOMAINS, sign_vote, consensus_from_votes
+from .fault_domains import (MONITORED_NODES, FAULT_CASES,
+                            CommonFaultSchedule, CommonFault)
+from .domain_analysis import analyze_domain_correlations
 
 
 @dataclass(frozen=True)
@@ -185,6 +188,9 @@ class Scenario:
     node_case: str = "auto"  # auto, none, report, tamper, both
     observer_case: str = "none"
     observer_loss_rate: float = 0.0
+    report_fault_nodes: tuple[str, ...] = ()
+    shared_zone_case: str = "none"
+    shared_zone_probability: float = 1.0
 
     def __post_init__(self) -> None:
         if not 5 <= self.duration_s <= 86400:
@@ -212,6 +218,15 @@ class Scenario:
             raise ValueError("Invalid observer fault case")
         if not 0 <= self.observer_loss_rate <= 1:
             raise ValueError("observer_loss_rate must be in [0, 1]")
+        if (not isinstance(self.report_fault_nodes, tuple)
+                or len(set(self.report_fault_nodes)) != len(self.report_fault_nodes)
+                or any(node not in MONITORED_NODES
+                       for node in self.report_fault_nodes)):
+            raise ValueError("report_fault_nodes must be unique monitored node IDs")
+        if self.shared_zone_case not in FAULT_CASES:
+            raise ValueError("Invalid shared_zone_case")
+        if not 0 <= self.shared_zone_probability <= 1:
+            raise ValueError("shared_zone_probability must be in [0,1]")
 
 
 @dataclass
@@ -293,6 +308,11 @@ class Simulator:
         self._wire_tampered: set[str] = set()
         self._cu_rng = random.Random(self.scenario.seed ^ 0xC0FFEE)
         self._observer_rng = random.Random(self.scenario.seed ^ 0x0B5E77)
+        self._common_faults = CommonFaultSchedule(
+            seed=self.scenario.seed, kind=self.scenario.shared_zone_case,
+            probability=self.scenario.shared_zone_probability,
+            onset_ms=int(self.scenario.duration_s * 720),
+        )
         self._observer_key = hashlib.sha256(
             ("hetnet-observer-lab:" + str(self.scenario.seed)).encode()).digest()
         self._cu_loss_streak: dict[str, int] = defaultdict(int)
@@ -564,13 +584,16 @@ class Simulator:
         return hmac.new(node_key, data, hashlib.sha256).hexdigest()
 
     def _observer_votes(self, now: int, node: str, nonce: str,
-                        expected: dict[str, int]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+                        expected: dict[str, int],
+                        common: CommonFault | None = None,
+                        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Sample three monitoring domains with independent transport/faults.
 
         Only DRA is subject to explicitly configured malicious observer cases.
         Every other node has three normally independent laboratory witnesses.
         """
         votes: list[dict[str, Any]] = []
+        common = common or CommonFault()
         # Align malicious observer behavior with the CU report compromise
         # window, allowing clean pre-attack evidence and a meaningful
         # collusion/concealment test.
@@ -579,6 +602,8 @@ class Simulator:
                 else "none")
         for observer, domain in OBSERVER_DOMAINS.items():
             delivered = self._observer_rng.random() >= self.scenario.observer_loss_rate
+            if observer in common.offline:
+                delivered = False
             if case in ("outage", "mixed") and observer == "tap-5gc":
                 delivered = False
             if case == "outage" and observer == "tap-epc":
@@ -595,7 +620,7 @@ class Simulator:
                           ("tap-epc", "tap-5gc"))
                       or (case == "mixed" and observer == "tap-epc")
                       or (case == "bad_mac" and observer == "tap-epc"))
-            if forged:
+            if forged or observer in common.fabricated:
                 counts["fabricated"] = counts.get("fabricated", 0) + 5
             timestamp = now - 2000 if case == "stale" and observer == "tap-epc" else now
             # Intentional on-path corruption must NOT be re-signed.
@@ -613,12 +638,16 @@ class Simulator:
 
     def _poll(self, now: int) -> None:
         """Measure control-channel, signed CU and separately verified witnesses."""
-        for node in ("msc2", "sgsn3", "mme4", "dra", "pcscf", "amf5"):
+        # Correlated fault is evaluated once for this epoch, then shared
+        # across all target nodes regardless of iteration order.
+        common = self._common_faults.at(now)
+        for node in MONITORED_NODES:
             nonce = "cu-" + str(now)
             generation = self.net.nodes[node].generation
             actual = dict(self._node_counts[node])
             expected = dict(self._independent_counts[node])
-            votes, quorum = self._observer_votes(now, node, nonce, expected)
+            votes, quorum = self._observer_votes(now, node, nonce, expected,
+                                                  common)
             # Request and response independently lost; never label missing
             # control telemetry as compromise merely from the timeout.
             delivered = all(
@@ -726,6 +755,8 @@ class Simulator:
             self._push(int(self.scenario.duration_s * 720), "compromise", "dra")
         if node_case in ("tamper", "both"):
             self._push(int(self.scenario.duration_s * 740), "wire_tamper", "msc2")
+        for node in self.scenario.report_fault_nodes:
+            self._push(int(self.scenario.duration_s * 720), "compromise", node)
 
     def run(self) -> dict[str, Any]:
         if self._executed:
@@ -781,12 +812,18 @@ class Simulator:
             [asdict(e) for e in self.events],
             observer_root_key=self._observer_key,
         )
+        domain_evidence = analyze_domain_correlations(
+            [asdict(e) for e in self.events], self._observer_key)
         cu_total = sum(e.protocol == "CU" for e in self.events)
         cu_delivered = sum(e.protocol == "CU" and
                            e.detail.get("cu_delivered", True)
                            for e in self.events)
+        scenario_snapshot = asdict(self.scenario)
+        # Public result JSON must survive an exact dumps/loads roundtrip.
+        # dataclasses.asdict preserves tuples, whereas JSON represents arrays.
+        scenario_snapshot["report_fault_nodes"] = list(self.scenario.report_fault_nodes)
         return {
-            "scenario": asdict(self.scenario),
+            "scenario": scenario_snapshot,
             "summary": {
                 "total_messages": sum(counts.values()),
                 "delivered": counts["DELIVERED"],
@@ -809,6 +846,7 @@ class Simulator:
                 "cu_observations": cu_total,
                 "cu_delivered": cu_delivered,
                 "cu_delivery_ratio": cu_delivered / cu_total if cu_total else None,
+                "domain_correlation": domain_evidence["summary"],
                 "node_evidence_classes": dict(sorted(Counter(
                     row["classification"] for row in node_evidence["nodes"]
                 ).items())),
@@ -820,6 +858,7 @@ class Simulator:
             "observations": aggregate([asdict(e) for e in self.events]),
             "alerts": [asdict(a) for a in self.alerts],
             "node_evidence": node_evidence,
+            "domain_evidence": domain_evidence,
             "standards": {
                 op: {"protocol": rule.protocol, "reference": rule.reference}
                 for op, rule in RULES.items()
