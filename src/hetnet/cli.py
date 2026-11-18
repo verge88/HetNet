@@ -13,6 +13,7 @@ from .calibration import calibrate_file, load_rates
 from .episode import run_validation
 from .stress import benign_stress
 from .node_validation import node_study
+from .zone_validation import zone_study, OBSERVER_CASES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
 
@@ -65,6 +66,10 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--no-attacks", action="store_true")
     run.add_argument("--node-case", choices=["auto", "none", "report", "tamper", "both"],
                      default="auto", help="Isolated node compromise/tamper scenario")
+    run.add_argument("--observer-case", choices=OBSERVER_CASES, default="none",
+                     help="Independent monitoring domain fault scenario")
+    run.add_argument("--observer-loss-rate", type=float, default=0.0,
+                     help="Independent observer vote loss probability")
     run.add_argument("--output", type=Path, default=Path("results"))
     run.add_argument("--traffic-scale", type=float, default=1.0)
     run.add_argument("--traffic-amplitude", type=float, default=0.35)
@@ -89,6 +94,15 @@ def main(argv: list[str] | None = None) -> None:
     validation.add_argument("--test-start-seed", type=int, default=42)
     validation.add_argument("--test-runs", type=int, default=10)
     validation.add_argument("--output", type=Path, default=Path("results/validation"))
+    zones = commands.add_parser(
+        "zone-study", help="2-of-3 monitoring quorum vs observer failures/collusion")
+    zones.add_argument("--duration", type=int, default=18)
+    zones.add_argument("--subscribers", type=int, default=8)
+    zones.add_argument("--start-seed", type=int, default=42)
+    zones.add_argument("--runs", type=int, default=6)
+    zones.add_argument("--observer-loss-rates", default="0,0.2,0.45")
+    zones.add_argument("--observer-cases", default=",".join(OBSERVER_CASES))
+    zones.add_argument("--output", type=Path, default=Path("results/zone-study"))
     node = commands.add_parser(
         "node-study", help="CU report compromise vs benign packet-loss matrix")
     node.add_argument("--duration", type=int, default=18)
@@ -137,6 +151,25 @@ def main(argv: list[str] | None = None) -> None:
         except (OSError, ValueError, DecodeError) as error:
             parser.error(str(error))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "zone-study":
+        if not 1 <= args.runs <= 100:
+            parser.error("--runs must be between 1 and 100")
+        try:
+            losses = tuple(float(v) for v in args.observer_loss_rates.split(","))
+            cases = tuple(v.strip() for v in args.observer_cases.split(","))
+            result = zone_study(
+                seeds=tuple(range(args.start_seed, args.start_seed + args.runs)),
+                observer_loss_rates=losses, observer_cases=cases,
+                duration_s=args.duration, subscribers=args.subscribers,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "zone_study.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(result["groups"], ensure_ascii=False, indent=2))
+        print("Exported zone study to", args.output.resolve())
     elif args.command == "node-study":
         if not 1 <= args.runs <= 100:
             parser.error("--runs must be between 1 and 100")
@@ -229,6 +262,8 @@ def main(argv: list[str] | None = None) -> None:
             cu_interval_ms=args.cu_interval,
             inject_attacks=not args.no_attacks,
             node_case=args.node_case,
+            observer_case=args.observer_case,
+            observer_loss_rate=args.observer_loss_rate,
             traffic_scale=args.traffic_scale,
             traffic_amplitude=args.traffic_amplitude,
             traffic_peak_hour=args.peak_hour,
