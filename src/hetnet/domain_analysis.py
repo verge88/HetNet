@@ -21,6 +21,7 @@ NODE_GENERATION = {
 def analyze_domain_correlations(
     events: list[dict[str, Any]], observer_root_key: bytes,
     min_affected_nodes: int = 2,
+    max_count_delta: int = 0,
 ) -> dict[str, Any]:
     """Find common absence/invalidity/outliers at the *same poll epoch*.
 
@@ -30,6 +31,8 @@ def analyze_domain_correlations(
     """
     if not 2 <= min_affected_nodes <= len(MONITORED_NODES):
         raise ValueError("min_affected_nodes must be between 2 and monitored node count")
+    if type(max_count_delta) is not int or not 0 <= max_count_delta <= 100:
+        raise ValueError("max_count_delta must be an integer in [0,100]")
     epochs: dict[int, list[dict]] = defaultdict(list)
     for event in events:
         if (event.get("protocol") == "CU"
@@ -49,7 +52,8 @@ def analyze_domain_correlations(
         for node, event in sorted(by_node.items()):
             decision = consensus_from_votes(
                 event.get("detail", {}).get("observer_votes", []),
-                observer_root_key, node, event["correlation_id"], epoch)
+                observer_root_key, node, event["correlation_id"], epoch,
+                max_count_delta=max_count_delta)
             for observer in decision["missing_observers"]:
                 if observer in OBSERVER_DOMAINS:
                     missing[observer].add(node)
@@ -101,6 +105,7 @@ def analyze_domain_correlations(
     return {
         "method": "same-epoch cross-node signed-witness symptom correlation",
         "min_affected_nodes": min_affected_nodes,
+        "max_count_delta": max_count_delta,
         "epochs": rows,
         "summary": {
             "epochs_total": len(rows),
