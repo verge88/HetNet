@@ -127,3 +127,15 @@ jobs:
           name: hetnet-stage10-labeled-aggregate
           path: results/stage10/
           if-no-files-found: error
+      - name: Stage 11 unknown-onset temporal episode evaluation
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet episode-audit --input examples/episodic/episodic_holdout_alpha.json
+          python -m hetnet episode-eval --train examples/labeled/lab_clean_alpha.json examples/labeled/lab_clean_beta.json --holdout examples/episodic/episodic_holdout_alpha.json examples/episodic/episodic_holdout_beta.json examples/episodic/episodic_holdout_gamma.json --output results/stage11/episodes
+      - name: Archive stage 11 episode metrics only
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage11-onset-episodes
+          path: results/stage11/
+          if-no-files-found: error
