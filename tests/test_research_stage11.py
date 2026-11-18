@@ -205,6 +205,19 @@ class CausalScannerTests(unittest.TestCase):
             self.assertGreater(row["attack_confirmation_opportunities"],
                                row["eligible_attack_confirmation_pairs"])
 
+    def test_entirely_missing_relative_period_reduces_coverage(self):
+        d = holdout()[0]
+        baseline = scan_alarms(d["measurements"], fitting())
+        missing = [row for row in d["measurements"]
+                   if row["interval_index"] != 5]
+        reduced = scan_alarms(missing, fitting())
+        self.assertEqual(reduced["total_possible_pairs"], 11 * 6)
+        self.assertEqual(reduced["total_possible_pairs"],
+                         baseline["total_possible_pairs"])
+        for detector in DETECTORS:
+            self.assertLess(reduced["eligible_pairs"][detector],
+                            baseline["eligible_pairs"][detector])
+
     def test_strict_threshold_validation(self):
         d = holdout()[0]
         for thresholds in (
@@ -232,10 +245,8 @@ class SplitAndEvaluationTests(unittest.TestCase):
         self.assertTrue(all(row["attack_episodes"] == 6
                             for row in report["overall"]))
         for row in report["overall"]:
-            self.assertEqual(
-                row["detected_episodes"] + row["missed_episodes"]
-                if "missed_episodes" in row else row["detected_episodes"] +
-                (row["attack_episodes"] - row["detected_episodes"]), 6)
+            self.assertEqual(row["detected_episodes"] +
+                             row["missed_episodes"], 6)
             self.assertLessEqual(row["matched_alerts"], row["alerts"])
             self.assertTrue(0 <= row["pair_coverage"] <= 1)
         self.assertEqual(len(report["holdout_sources"]), 3)
