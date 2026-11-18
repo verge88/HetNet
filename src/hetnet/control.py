@@ -26,6 +26,7 @@ class _NodeState:
     evidence_correlation_ids: list[str] = field(default_factory=list)
     observer_quorum_missing: int = 0
     observer_quorum_present: int = 0
+    last_observer_quorum: bool | None = None
     observer_outliers: Counter[str] = field(default_factory=Counter)
     observer_invalid: Counter[str] = field(default_factory=Counter)
     observer_missing: Counter[str] = field(default_factory=Counter)
@@ -81,9 +82,11 @@ def inspect_cu_events(events: list[dict[str, Any]],
                     or not isinstance(majority, dict)
                     or not isinstance(reported_vector, dict)):
                 state.observer_quorum_missing += 1
+                state.last_observer_quorum = False
                 state.mismatch_streak = 0
                 continue
             state.observer_quorum_present += 1
+            state.last_observer_quorum = True
             mismatch = reported_vector != majority
         else:
             # Backward-compatible Stage 4 hand-built CU events.
@@ -123,10 +126,14 @@ def inspect_cu_events(events: list[dict[str, Any]],
             category = "unconfirmed_divergence"
             reason = ("Insufficient independent observations to confirm "
                       "a persistent report discrepancy")
+        elif state.observer_quorum_missing and state.last_observer_quorum is False:
+            category = "observer_quorum_unavailable"
+            reason = ("Most recent CU observations lack independent witness "
+                      "quorum; old correct votes cannot authenticate a new report")
         elif state.observer_quorum_missing and state.authenticated_matches:
             category = "consistent_with_observer_gaps"
-            reason = ("Available observer quorums agree with signed reports, "
-                      "but some observer quorums were unavailable")
+            reason = ("Some witness quorums were unavailable, but recent "
+                      "quorum comparisons agree")
         elif state.observer_quorum_missing:
             category = "observer_quorum_unavailable"
             reason = ("Not enough independently authenticated monitoring "
@@ -167,6 +174,7 @@ def inspect_cu_events(events: list[dict[str, Any]],
             "invalid_macs": state.invalid_macs,
             "observer_quorum_present": state.observer_quorum_present,
             "observer_quorum_missing": state.observer_quorum_missing,
+            "latest_observer_quorum": state.last_observer_quorum,
             "observer_outliers": dict(sorted(state.observer_outliers.items())),
             "observer_invalid": dict(sorted(state.observer_invalid.items())),
             "observer_missing": dict(sorted(state.observer_missing.items())),
