@@ -1,0 +1,125 @@
+{
+  "baseline": "3GPP Release 18",
+  "frozen_on": "2026-11-18",
+  "purpose": "Reference revision pins for abstract modeling only, not an assertion of implementation conformance",
+  "specifications": [
+    {
+      "id": "3GPP TS 29.002",
+      "release": 18,
+      "version": "18.0.0",
+      "scope": "MAP",
+      "source_url": "https://www.etsi.org/deliver/etsi_ts/129000_129099/129002/18.00.00_60/ts_129002v180000p.pdf",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.272",
+      "release": 18,
+      "version": "18.7.0",
+      "scope": "EPC S6a/S6d Diameter",
+      "source_url": "https://portal.etsi.org/webapp/WorkProgram/Report_WorkItem.asp?WKI_ID=79473",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.274",
+      "release": 18,
+      "version": "18.8.0",
+      "scope": "GTPv2-C EPS",
+      "source_url": "https://portal.etsi.org/webapp/workprogram/Report_WorkItem.asp?WKI_ID=73810",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 24.229",
+      "release": 18,
+      "version": "18.11.0",
+      "scope": "IMS SIP stage 3",
+      "source_url": "https://portal.etsi.org/webapp/workprogram/Report_WorkItem.asp?WKI_ID=78977",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 23.401",
+      "release": 18,
+      "version": "18.6.0",
+      "scope": "LTE/EPC mobility",
+      "source_url": "https://portal.etsi.org/webapp/WorkProgram/Frame_WorkItemList.asp?SearchPage=TRUE",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 23.501",
+      "release": 18,
+      "version": "18.12.0",
+      "scope": "5G System architecture",
+      "source_url": "https://portal.etsi.org/Portal_Pub/APNProcPub.asp?ACTION_TYPE_NB=PU&FROM_DD=19&FROM_MM=Jan&FROM_YYYY=2026&REAL_FROM_DD=19&REAL_FROM_MM=Jan&REAL_FROM_YYYY=2026&REAL_TO_DD=25&REAL_TO_MM=Jan&TO_DD=25&TO_MM=Jan",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.500",
+      "release": 18,
+      "version": "18.10.0",
+      "scope": "5G SBI stage 3",
+      "source_url": "https://www.etsi.org/deliver/etsi_ts/129500_129599/129500/18.10.00_60/ts_129500v181000p.pdf",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.502",
+      "release": 18,
+      "version": "18.12.0",
+      "scope": "5G SMF Session Management services",
+      "source_url": "https://portal.etsi.org/webapp/WorkProgram/Report_WorkItem.asp?WKI_ID=79467",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.503",
+      "release": 18,
+      "version": "18.13.0",
+      "scope": "UDM Services",
+      "source_url": "https://portal.etsi.org/webapp/WorkProgram/Report_WorkItem.asp?WKI_ID=78950",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.509",
+      "release": 18,
+      "version": "18.6.0",
+      "scope": "AUSF Services",
+      "source_url": "https://portal.etsi.org/webapp/WorkProgram/Report_WorkItem.asp?WKI_ID=77825",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 29.510",
+      "release": 18,
+      "version": "18.11.0",
+      "scope": "NRF Services",
+      "source_url": "https://portal.etsi.org/Portal_Pub/APNProcPub.asp?ACTION_TYPE_NB=PU&FROM_DD=30&FROM_MM=Mar&FROM_YYYY=2026&REAL_FROM_DD=30&REAL_FROM_MM=Mar&REAL_TO_DD=5&REAL_TO_MM=Apr&TO_DD=5&TO_MM=Apr",
+      "conformance": "not_claimed"
+    },
+    {
+      "id": "3GPP TS 33.501",
+      "release": 18,
+      "version": "18.12.0",
+      "scope": "5G Security architecture",
+      "source_url": "https://portal.etsi.org/Portal_Pub/APNProcPub.asp?ACTION_TYPE_NB=PU&FROM_DD=20&FROM_MM=Jul&FROM_YYYY=2026&REAL_FROM_DD=20&REAL_FROM_MM=Jul&REAL_TO_DD=26&REAL_TO_MM=Jul&TO_DD=26&TO_MM=Jul",
+      "conformance": "not_claimed"
+    }
+  ],
+  "ietf": [
+    {
+      "id": "RFC 3261",
+      "scope": "SIP",
+      "url": "https://www.rfc-editor.org/info/rfc3261"
+    },
+    {
+      "id": "RFC 6733",
+      "scope": "Diameter",
+      "url": "https://www.rfc-editor.org/info/rfc6733"
+    },
+    {
+      "id": "RFC 9113",
+      "scope": "HTTP/2 reference",
+      "url": "https://www.rfc-editor.org/info/rfc9113"
+    }
+  ],
+  "limitations": [
+    "Release 18 revisions are selected snapshots, not necessarily latest 18.x",
+    "No radio/access stack, ASN.1/AVP codec, SBI HTTP/2, TLS, OAuth2 or interop conformance tests",
+    "Reference mapping tests validate coverage, not normative compliance"
+  ]
+}

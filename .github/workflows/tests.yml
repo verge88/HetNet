@@ -20,3 +20,13 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: CLI smoke test
         run: python -m hetnet run --duration 8 --subscribers 4 --seed 4 --output results
+      - name: Ten-seed synthetic research experiment
+        if: matrix.python-version == '3.12'
+        run: python -m hetnet experiment --duration 18 --subscribers 8 --start-seed 42 --runs 10 --output results/experiment
+      - name: Archive reproducible experiment
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage2-multiseed
+          path: results/experiment/
+          if-no-files-found: error

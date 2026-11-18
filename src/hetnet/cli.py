@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .simulator import RULES, Scenario, Simulator
+from .experiment import export_experiment, run_multiseed
 
 
 def export_run(result: dict[str, Any], output: Path) -> None:
@@ -22,6 +23,16 @@ def export_run(result: dict[str, Any], output: Path) -> None:
             json.dumps(content, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+    if result["observations"]:
+        with (output / "observations.csv").open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=result["observations"][0].keys())
+            writer.writeheader()
+            for window in result["observations"]:
+                writer.writerow({
+                    key: json.dumps(value, ensure_ascii=False)
+                    if isinstance(value, (dict, list)) else value
+                    for key, value in window.items()
+                })
     if result["events"]:
         with (output / "events.csv").open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=result["events"][0].keys())
@@ -47,6 +58,16 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--cu-interval", type=int, default=1500, help="milliseconds")
     run.add_argument("--no-attacks", action="store_true")
     run.add_argument("--output", type=Path, default=Path("results"))
+    run.add_argument("--traffic-scale", type=float, default=1.0)
+    run.add_argument("--traffic-amplitude", type=float, default=0.35)
+    run.add_argument("--peak-hour", type=float, default=18.0)
+    exp = commands.add_parser("experiment", help="Repeatable multi-seed evaluation")
+    exp.add_argument("--duration", type=int, default=18)
+    exp.add_argument("--subscribers", type=int, default=8)
+    exp.add_argument("--start-seed", type=int, default=42)
+    exp.add_argument("--runs", type=int, default=10)
+    exp.add_argument("--traffic-scale", type=float, default=1.0)
+    exp.add_argument("--output", type=Path, default=Path("results/experiment"))
     serve = commands.add_parser("serve", help="Open local simulation dashboard")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
@@ -56,6 +77,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "serve":
         from .web import serve_dashboard
         serve_dashboard(args.host, args.port)
+    elif args.command == "experiment":
+        if not 1 <= args.runs <= 100:
+            parser.error("--runs must be between 1 and 100")
+        result = run_multiseed(
+            duration_s=args.duration, subscribers=args.subscribers,
+            seeds=tuple(range(args.start_seed, args.start_seed + args.runs)),
+            traffic_scale=args.traffic_scale,
+        )
+        export_experiment(result, args.output)
+        print(json.dumps(result["summary"], indent=2, ensure_ascii=False))
+        print("Exported reproducible evaluation to", args.output.resolve())
     elif args.command == "standards":
         print(json.dumps({
             key: {"protocol": rule.protocol, "reference": rule.reference}
@@ -70,6 +102,9 @@ def main(argv: list[str] | None = None) -> None:
             seed=args.seed, loss_rate=args.loss_rate,
             cu_interval_ms=args.cu_interval,
             inject_attacks=not args.no_attacks,
+            traffic_scale=args.traffic_scale,
+            traffic_amplitude=args.traffic_amplitude,
+            traffic_peak_hour=args.peak_hour,
         )
         result = Simulator(scenario).run()
         export_run(result, args.output)

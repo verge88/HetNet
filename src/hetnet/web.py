@@ -35,6 +35,7 @@ svg{width:100%;height:auto;min-height:380px}.legend{display:flex;gap:14px;flex-w
 <label>Время, с<input id="duration" type="number" min="5" max="3600" value="18"></label>
 <label>Абоненты<input id="subscribers" type="number" min="4" max="300" value="8"></label>
 <label>Seed<input id="seed" type="number" value="42"></label>
+<label>Фоновая нагрузка, ×<input id="traffic" type="number" min="0" max="25" step="0.5" value="1"></label>
 <label style="align-self:center">Синтетические атаки<input id="attack" type="checkbox" checked></label>
 <button type="submit">Запустить моделирование</button></form></div>
 <div class="grid" id="metrics"></div>
@@ -67,7 +68,7 @@ dot.className='dot';dot.style.background=colors[k];span.appendChild(document.cre
 }
 function render(data){
 const s=data.summary,m=$('metrics');m.replaceChildren();
-[['Сообщений',s.total_messages],['Доставлено',s.delivered],['Отклонено',s.rejected],['Тревог',s.alerts]]
+[['Сообщений',s.total_messages],['Доставлено',s.delivered],['Очередь, мс',s.max_queue_delay_ms],['Тревог',s.alerts]]
 .forEach(([name,value])=>{const c=add('div',m);c.className='metric';
 const k=add('span',c,name);k.className='small';add('strong',c,String(value))});
 draw(data);const alerts=$('alerts');alerts.replaceChildren();
@@ -80,7 +81,7 @@ const tr=add('tr',tb);[e.time_ms,e.generation,e.protocol,e.operation,e.source+' 
 }
 $('controls').addEventListener('submit',async e=>{e.preventDefault();const button=document.querySelector('button');button.disabled=true;button.textContent='Вычисление...';
 try{const p=new URLSearchParams({duration:$('duration').value,subscribers:$('subscribers').value,
-seed:$('seed').value,attacks:$('attack').checked?'1':'0'});
+seed:$('seed').value,traffic:$('traffic').value,attacks:$('attack').checked?'1':'0'});
 const res=await fetch('/api/run?'+p.toString());const payload=await res.json();
 if(!res.ok)throw new Error(payload.error||'HTTP '+res.status);render(payload)}
 catch(err){alert(err.message)}finally{button.disabled=false;button.textContent='Запустить моделирование'}});
@@ -107,7 +108,11 @@ def serve_dashboard(host: str = "127.0.0.1", port: int = 8080) -> None:
                 subscribers = number("subscribers", "8")
                 if not 5 <= duration <= 3600 or not 4 <= subscribers <= 300:
                     raise ValueError("Dashboard limits: duration 5..3600 s, subscribers 4..300")
+                traffic = float(params.get("traffic", ["1"])[0])
+                if not 0 <= traffic <= 25:
+                    raise ValueError("Dashboard traffic scale must be 0..25")
                 scenario = Scenario(
+                    traffic_scale=traffic,
                     duration_s=duration,
                     subscribers=subscribers,
                     seed=number("seed", "42"),
