@@ -67,7 +67,13 @@ def inspect_cu_events(events: list[dict[str, Any]],
             # Unsupported/malformed telemetry must not become a security proof.
             state.mismatch_streak = 0
             continue
-        if reported != observed:
+        vector_consistent = detail.get("observer_consistent")
+        if vector_consistent is not None and not isinstance(vector_consistent, bool):
+            state.mismatch_streak = 0
+            continue
+        mismatch = (not vector_consistent) if vector_consistent is not None else (
+            reported != observed)
+        if mismatch:
             state.authenticated_mismatches += 1
             state.mismatch_streak += 1
             state.longest_mismatch_streak = max(
