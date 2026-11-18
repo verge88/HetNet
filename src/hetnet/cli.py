@@ -18,6 +18,7 @@ from .cohort_validation import multi_node_study, COHORTS
 from .probe_validation import probe_study
 from .external_aggregates import (run_external_eval, load_dataset,
                                   source_summary)
+from .zonal_detection import heldout_comparison
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -158,6 +159,16 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    zonal = commands.add_parser(
+        "zonal-compare",
+        help="Compare signed CU and zonal detectors with disjoint synthetic sources")
+    zonal.add_argument("--duration", type=int, default=18)
+    zonal.add_argument("--subscribers", type=int, default=8)
+    zonal.add_argument("--train-start-seed", type=int, default=21)
+    zonal.add_argument("--train-runs", type=int, default=4)
+    zonal.add_argument("--test-start-seed", type=int, default=42)
+    zonal.add_argument("--test-runs", type=int, default=4)
+    zonal.add_argument("--output", type=Path, default=Path("results/zonal-compare"))
     audit = commands.add_parser(
         "aggregate-audit", help="Validate aggregate-only JSON and print privacy-safe summary")
     audit.add_argument("--input", type=Path, required=True)
@@ -295,6 +306,26 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "zonal-compare":
+        if not 1 <= args.train_runs <= 100 or not 1 <= args.test_runs <= 100:
+            parser.error("Training and test runs must be between 1 and 100")
+        try:
+            result = heldout_comparison(
+                train_seeds=tuple(range(args.train_start_seed,
+                                        args.train_start_seed + args.train_runs)),
+                test_seeds=tuple(range(args.test_start_seed,
+                                       args.test_start_seed + args.test_runs)),
+                duration_s=args.duration, subscribers=args.subscribers,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "zonal_comparison.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        for key in ("training", "overall", "per_source"):
+            print(json.dumps({key: result[key]}, ensure_ascii=False, indent=2))
+        print("Exported source-heldout zonal comparison to", args.output.resolve())
     elif args.command == "aggregate-audit":
         try:
             summary = source_summary(load_dataset(args.input))
