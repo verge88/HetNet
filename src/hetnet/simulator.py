@@ -17,6 +17,7 @@ from typing import Any
 from .procedures import ProcedureLedger
 from .traffic import TrafficGenerator
 from .observations import aggregate
+from .control import inspect_cu_events
 
 
 @dataclass(frozen=True)
@@ -279,6 +280,9 @@ class Simulator:
         self._nf_profiles: dict[str, tuple[str, str]] = {}
         self._compromised: set[str] = set()
         self._wire_tampered: set[str] = set()
+        self._cu_rng = random.Random(self.scenario.seed ^ 0xC0FFEE)
+        self._cu_loss_streak: dict[str, int] = defaultdict(int)
+        self._cu_last_success: dict[str, int] = {}
         self._cu_key = hashlib.sha256(("hetnet-cu-test:" + str(self.scenario.seed)).encode()).digest()
         self._executed = False
 
@@ -546,38 +550,82 @@ class Simulator:
         return hmac.new(node_key, data, hashlib.sha256).hexdigest()
 
     def _poll(self, now: int) -> None:
+        """Produce separate synthetic CU channel and independent tap evidence.
+
+        The CU channel is a modeled two-hop request/response path, not a
+        standardized 3GPP control message. Missing reports never imply an
+        authenticated discrepancy and are not labeled as compromise.
+        """
         for node in ("msc2", "sgsn3", "mme4", "dra", "pcscf", "amf5"):
-            counts = dict(self._node_counts[node])
-            reported = dict(counts)
             nonce = "cu-" + str(now)
+            source_generation = self.net.nodes[node].generation
+            # Independent loss sample: one modeled control request hop and
+            # one response hop; this is not an operator path measurement.
+            cu_delivered = all(
+                self._cu_rng.random() >= self.scenario.loss_rate
+                for _ in range(2))
+            if not cu_delivered:
+                self._cu_loss_streak[node] += 1
+                self.events.append(Event(
+                    now, source_generation, "CU", "CU.Reconciliation",
+                    node, "observer", "", nonce, "MISSING", 0, [node],
+                    "Research control-unit method (not 3GPP wire protocol)",
+                    False, {
+                        "cu_delivered": False,
+                        "mac_valid": None,
+                        "reported_total": None,
+                        "observed_total": None,
+                        "observer_consistent": None,
+                        "transport_loss_observed": True,
+                        "cu_consecutive_losses": self._cu_loss_streak[node],
+                        "cu_staleness_ms": now - self._cu_last_success.get(node, 0),
+                    },
+                ))
+                continue
+            self._cu_loss_streak[node] = 0
+            self._cu_last_success[node] = now
+            actual = dict(self._node_counts[node])
+            observed = dict(self._independent_counts[node])
+            reported = dict(actual)
             signature = self._sign(node, nonce, reported)
             if node in self._compromised:
-                # Compromised signer can forge a valid MAC, but not the
-                # independent observation maintained outside the node.
+                # A compromised signer can authenticate a false report; only
+                # the observer's independent counters expose the discrepancy.
                 reported["fabricated"] = reported.get("fabricated", 0) + 5
                 signature = self._sign(node, nonce, reported)
             elif node in self._wire_tampered:
-                # An on-path actor can change bytes but cannot re-sign.
+                # On-path alteration is not attributed to reporting-node compromise.
                 reported["fabricated"] = reported.get("fabricated", 0) + 1
             verified = hmac.compare_digest(
                 signature, self._sign(node, nonce, reported))
-            consistent = (reported == dict(self._independent_counts[node]))
-            outcome = "MATCH" if verified and consistent else "MISMATCH"
-            if not consistent:
+            consistent = reported == observed
+            status = "MATCH" if verified and consistent else "MISMATCH"
+            if verified and not consistent:
                 self._alert(now, "cu_discrepancy", node,
-                            "Signed node report disagrees with independent transit counters",
-                            "cu-" + str(now), dedupe=True)
+                            "Authenticated node report differs from independent transit observation",
+                            nonce, dedupe=True)
             if not verified:
                 self._alert(now, "cu_integrity", node,
-                            "Control-unit MAC verification failed",
-                            "cu-" + str(now))
+                            "Control-unit MAC verification failed; source not attributed",
+                            nonce, dedupe=True)
             self.events.append(Event(
-                now, self.net.nodes[node].generation, "CU",
-                "CU.Reconciliation", node, "observer", "", "cu-" + str(now),
-                outcome, 0, [node], "Research control-unit method (not 3GPP wire protocol)",
-                False, {"reported_total": sum(reported.values()),
-                        "observed_total": sum(self._independent_counts[node].values()),
-                        "mac_valid": verified},
+                now, source_generation, "CU", "CU.Reconciliation",
+                node, "observer", "", nonce, status, 0, [node],
+                "Research control-unit method (not 3GPP wire protocol)",
+                False, {
+                    "cu_delivered": True,
+                    "reported_total": sum(reported.values()),
+                    "observed_total": sum(observed.values()),
+                    "observer_consistent": consistent,
+                    "counter_disagreement": sum(
+                        abs(reported.get(op, 0) - observed.get(op, 0))
+                        for op in set(reported) | set(observed)),
+                    "mac_valid": verified,
+                    "transport_loss_observed": False,
+                    "cu_consecutive_losses": 0,
+                    "cu_staleness_ms": 0,
+                    "cu_processing_delay_ms": 5 if node in ("msc2", "sgsn3") else 2,
+                },
             ))
 
     def _plan(self) -> None:
@@ -663,6 +711,11 @@ class Simulator:
             e.generation for e in self.events
             if e.protocol not in ("CU", "INTERWORKING")
         )
+        node_evidence = inspect_cu_events([asdict(e) for e in self.events])
+        cu_total = sum(e.protocol == "CU" for e in self.events)
+        cu_delivered = sum(e.protocol == "CU" and
+                           e.detail.get("cu_delivered", True)
+                           for e in self.events)
         return {
             "scenario": asdict(self.scenario),
             "summary": {
@@ -684,6 +737,12 @@ class Simulator:
                 "max_queue_delay_ms": self._max_queue_delay_ms,
                 "queue_drops": self._queue_drops,
                 "transactions": self._procedures.snapshot(),
+                "cu_observations": cu_total,
+                "cu_delivered": cu_delivered,
+                "cu_delivery_ratio": cu_delivered / cu_total if cu_total else None,
+                "node_evidence_classes": dict(sorted(Counter(
+                    row["classification"] for row in node_evidence["nodes"]
+                ).items())),
             },
             "registered": dict(sorted(self.registered.items())),
             "nodes": [asdict(n) for n in self.net.nodes.values()],
@@ -691,6 +750,7 @@ class Simulator:
             "events": [asdict(e) for e in self.events],
             "observations": aggregate([asdict(e) for e in self.events]),
             "alerts": [asdict(a) for a in self.alerts],
+            "node_evidence": node_evidence,
             "standards": {
                 op: {"protocol": rule.protocol, "reference": rule.reference}
                 for op, rule in RULES.items()
