@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections import defaultdict
 import hashlib
 import json
-import math
 from pathlib import Path
 import re
 from statistics import mean, median
@@ -54,7 +53,8 @@ def validate_dataset(data: Any) -> dict[str, Any]:
     if not isinstance(source, str) or not SOURCE_ID.fullmatch(source):
         raise ValueError("source_id must be an anonymous ASCII source slug")
     origin = data["provenance"]
-    if origin not in PROVENANCE or data["reference_basis"] != PROVENANCE[origin]:
+    if (not isinstance(origin, str) or origin not in PROVENANCE
+            or data["reference_basis"] != PROVENANCE[origin]):
         raise ValueError("Invalid provenance/reference basis combination")
     rows = data["measurements"]
     if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ROWS:
@@ -66,7 +66,9 @@ def validate_dataset(data: Any) -> dict[str, Any]:
             raise ValueError("Every row must contain only approved aggregate counters")
         observer, node, operation = (item["observer"], item["node"],
                                      item["operation_class"])
-        if (observer not in OBSERVER_DOMAINS or node not in MONITORED_NODES
+        if (not isinstance(observer, str) or not isinstance(node, str)
+                or not isinstance(operation, str)
+                or observer not in OBSERVER_DOMAINS or node not in MONITORED_NODES
                 or operation not in OPERATION_CLASSES):
             raise ValueError("Unknown observer, node or coarse operation class")
         idx, reference, observed = (item["interval_index"],
@@ -96,12 +98,25 @@ def validate_dataset(data: Any) -> dict[str, Any]:
     }
 
 
+def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Disallow duplicate JSON object keys (including those at nested levels)."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON field: " + key)
+        result[key] = value
+    return result
+
+
 def load_dataset(path: Path) -> dict[str, Any]:
     if not isinstance(path, Path):
         path = Path(path)
     if path.stat().st_size > MAX_FILE_BYTES:
         raise ValueError("Aggregate input exceeds 1 MiB size limit")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"),
+                      object_pairs_hook=_strict_pairs,
+                      parse_constant=lambda _: (_ for _ in ()).throw(
+                          ValueError("Non-finite JSON value")))
     return validate_dataset(data)
 
 
