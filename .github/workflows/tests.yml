@@ -68,3 +68,15 @@ jobs:
           name: hetnet-stage5-observer-quorum
           path: results/stage5/
           if-no-files-found: error
+      - name: Stage 6 correlated-zone multi-node evaluation
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet run --duration 18 --subscribers 8 --no-attacks --node-case none --report-fault-nodes msc2,amf5 --shared-zone-case epc_5gc_outage --output results/stage6/demo
+          python -m hetnet cohort-study --duration 18 --subscribers 8 --start-seed 42 --runs 6 --fault-cases none,epc_outage,epc_5gc_outage,epc_corrupt,epc_5gc_collude --cohorts none,legacy_5g,epc_ims --shared-zone-probability 1 --output results/stage6/cohorts
+      - name: Archive stage 6 correlated domain study
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage6-multi-node-domains
+          path: results/stage6/
+          if-no-files-found: error
