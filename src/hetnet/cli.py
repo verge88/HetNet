@@ -16,6 +16,8 @@ from .node_validation import node_study
 from .zone_validation import zone_study, OBSERVER_CASES
 from .cohort_validation import multi_node_study, COHORTS
 from .probe_validation import probe_study
+from .external_aggregates import (run_external_eval, load_dataset,
+                                  source_summary)
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -156,6 +158,16 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    audit = commands.add_parser(
+        "aggregate-audit", help="Validate aggregate-only JSON and print privacy-safe summary")
+    audit.add_argument("--input", type=Path, required=True)
+    ext = commands.add_parser(
+        "external-eval", help="Source-disjoint aggregate observer calibration (no attack labels)")
+    ext.add_argument("--train", type=Path, nargs="+", required=True,
+                     help="One or more independent SOURCE IDs for training; not proof of independence")
+    ext.add_argument("--holdout", type=Path, required=True,
+                     help="Source ID different from every training dataset")
+    ext.add_argument("--output", type=Path, default=Path("results/external-eval"))
     calibration = commands.add_parser(
         "calibrate", help="Calculate rates from aggregate non-PII counts")
     calibration.add_argument("--input", type=Path, required=True)
@@ -283,6 +295,23 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "aggregate-audit":
+        try:
+            summary = source_summary(load_dataset(args.input))
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    elif args.command == "external-eval":
+        try:
+            result = run_external_eval(args.train, args.holdout)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "external_eval.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(result["holdout"], ensure_ascii=False, indent=2))
+        print("Exported source-disjoint evaluation to", args.output.resolve())
     elif args.command == "calibrate":
         try:
             result = calibrate_file(args.input, args.output)

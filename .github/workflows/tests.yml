@@ -92,3 +92,15 @@ jobs:
           name: hetnet-stage7-zonal-probes
           path: results/stage7/
           if-no-files-found: error
+      - name: Stage 8 source-disjoint aggregate counter evaluation
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet aggregate-audit --input examples/external/lab_training_alpha.json
+          python -m hetnet external-eval --train examples/external/lab_training_alpha.json examples/external/lab_training_beta.json --holdout examples/external/lab_holdout_gamma.json --output results/stage8/external
+      - name: Archive stage 8 source-disjoint calibration and holdout
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage8-aggregate-holdout
+          path: results/stage8/
+          if-no-files-found: error

@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "source_id": "lab_holdout_gamma",
+  "provenance": "synthetic",
+  "reference_basis": "synthetic_truth",
+  "measurements": [
+    {
+      "observer": "tap-legacy",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 281,
+      "observed_count": 262
+    },
+    {
+      "observer": "tap-epc",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 281,
+      "observed_count": 253
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 281,
+      "observed_count": 241
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 298,
+      "observed_count": 277
+    },
+    {
+      "observer": "tap-epc",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 298,
+      "observed_count": 267
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 298,
+      "observed_count": 257
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 312,
+      "observed_count": 290
+    },
+    {
+      "observer": "tap-epc",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 312,
+      "observed_count": 280
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 312,
+      "observed_count": 269
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 329,
+      "observed_count": 305
+    },
+    {
+      "observer": "tap-epc",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 329,
+      "observed_count": 297
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 329,
+      "observed_count": 283
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 343,
+      "observed_count": 318
+    },
+    {
+      "observer": "tap-epc",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 343,
+      "observed_count": 310
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 0,
+      "reference_count": 343,
+      "observed_count": 295
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 360,
+      "observed_count": 336
+    },
+    {
+      "observer": "tap-epc",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 360,
+      "observed_count": 324
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 0,
+      "reference_count": 360,
+      "observed_count": 309
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 302,
+      "observed_count": 281
+    },
+    {
+      "observer": "tap-epc",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 302,
+      "observed_count": 271
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "msc2",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 302,
+      "observed_count": 261
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 319,
+      "observed_count": 296
+    },
+    {
+      "observer": "tap-epc",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 319,
+      "observed_count": 288
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "msc2",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 319,
+      "observed_count": 274
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 333,
+      "observed_count": 309
+    },
+    {
+      "observer": "tap-epc",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 333,
+      "observed_count": 301
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "mme4",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 333,
+      "observed_count": 286
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 350,
+      "observed_count": 326
+    },
+    {
+      "observer": "tap-epc",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 350,
+      "observed_count": 315
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "mme4",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 350,
+      "observed_count": 300
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 364,
+      "observed_count": 340
+    },
+    {
+      "observer": "tap-epc",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 364,
+      "observed_count": 328
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "amf5",
+      "operation_class": "MAP",
+      "interval_index": 1,
+      "reference_count": 364,
+      "observed_count": 312
+    },
+    {
+      "observer": "tap-legacy",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 381,
+      "observed_count": 354
+    },
+    {
+      "observer": "tap-epc",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 381,
+      "observed_count": 342
+    },
+    {
+      "observer": "tap-5gc",
+      "node": "amf5",
+      "operation_class": "SBI",
+      "interval_index": 1,
+      "reference_count": 381,
+      "observed_count": 329
+    }
+  ]
+}
