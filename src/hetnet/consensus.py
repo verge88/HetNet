@@ -56,6 +56,14 @@ def count_distance(left: dict[str, int], right: dict[str, int]) -> int:
                 for k in left.keys() | right.keys()), default=0)
 
 
+def counts_within(left: dict[str, int], right: dict[str, int],
+                  max_count_delta: int) -> bool:
+    """Preserve EXACT legacy semantics at zero tolerance, including key sets."""
+    if max_count_delta == 0:
+        return left == right
+    return count_distance(left, right) <= max_count_delta
+
+
 def consensus_from_votes(
     votes: list[dict[str, Any]], root_key: bytes, node: str, nonce: str,
     now_ms: int, quorum: int = 2, max_age_ms: int = 1000,
@@ -119,7 +127,7 @@ def consensus_from_votes(
     compatible: list[tuple[str, ...]] = []
     for size in range(len(names), quorum - 1, -1):
         for subset in combinations(names, size):
-            if all(count_distance(accepted[a], accepted[b]) <= max_count_delta
+            if all(counts_within(accepted[a], accepted[b], max_count_delta)
                    for a, b in combinations(subset, 2)):
                 compatible.append(subset)
         if compatible:
