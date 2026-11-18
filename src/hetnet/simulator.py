@@ -16,6 +16,7 @@ from typing import Any
 
 from .procedures import ProcedureLedger
 from .traffic import TrafficGenerator
+from .observations import aggregate
 
 
 @dataclass(frozen=True)
@@ -686,6 +687,7 @@ class Simulator:
             "nodes": [asdict(n) for n in self.net.nodes.values()],
             "links": [asdict(link) for link in self.net.links],
             "events": [asdict(e) for e in self.events],
+            "observations": aggregate([asdict(e) for e in self.events]),
             "alerts": [asdict(a) for a in self.alerts],
             "standards": {
                 op: {"protocol": rule.protocol, "reference": rule.reference}
