@@ -78,6 +78,7 @@ class PersistenceTests(unittest.TestCase):
         train, holdout = envelopes(sources, trust)
         with tempfile.TemporaryDirectory() as root:
             db_path = Path(root) / "replay.sqlite3"
+            DurableReplayStore(db_path).initialize()
             first = evaluate_durable_episodes(train, holdout, trust, db_path)
             self.assertTrue(first["durable_attestation"]["atomic_batch_committed"])
             self.assertEqual(
@@ -103,6 +104,9 @@ class PersistenceTests(unittest.TestCase):
                 path.write_text(json.dumps(record), encoding="utf-8")
                 paths.append(path)
             db_path = folder / "persist.sqlite3"
+            with contextlib.redirect_stdout(io.StringIO()) as buffer:
+                main(["attestation-init-state", "--state-db", str(db_path)])
+            self.assertTrue(json.loads(buffer.getvalue())["initialized"])
             args = [
                 sys.executable, "-m", "hetnet", "durable-attested-eval",
                 "--train", str(paths[0]), str(paths[1]),
@@ -125,6 +129,7 @@ class PersistenceTests(unittest.TestCase):
         sources, trust = signed_sources()
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             a, b = envelopes(sources, trust, 1)
             evaluate_durable_episodes(a, b, trust, p)
             fresh_a, fresh_b = envelopes(sources, trust, 2)
@@ -144,6 +149,7 @@ class PersistenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "MAC mismatch"):
                 evaluate_durable_episodes(a, forged, trust, p)
             self.assertFalse(p.exists())
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             self.assertTrue(p.exists())
 
@@ -162,6 +168,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust, 1)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             store = DurableReplayStore(p)
             self.assertTrue(store.revoke("test_key_0")["revoked"])
@@ -180,6 +187,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust, 1)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             DurableReplayStore(p).revoke("test_key_3")
             fresh_a, fresh_b = envelopes(sources, trust, 2)
@@ -193,6 +201,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust, 1)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             DurableReplayStore(p).revoke("test_key_0")
             old = trust.pop("test_key_0")
@@ -213,6 +222,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust, 1)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             old = trust["test_key_0"]
             trust["test_key_0"] = TrustedIdentity(
@@ -228,6 +238,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust, 1)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "db.sqlite3"
+            DurableReplayStore(p).initialize()
             evaluate_durable_episodes(a, b, trust, p)
             sources[0]["lineage_id"] = "other_lineage"
             old = trust["test_key_0"]
@@ -248,6 +259,23 @@ class PersistenceTests(unittest.TestCase):
                     fn()
             self.assertFalse(p.exists())
 
+    def test_deleted_db_fails_closed_and_requires_explicit_reinitialization(self):
+        sources, trust = signed_sources()
+        a, b = envelopes(sources, trust)
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "guard.sqlite3"
+            store = DurableReplayStore(path)
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                evaluate_durable_episodes(a, b, trust, path)
+            store.initialize()
+            evaluate_durable_episodes(a, b, trust, path)
+            with self.assertRaisesRegex(ValueError, "refusing reset"):
+                store.initialize()
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                evaluate_durable_episodes(a, b, trust, path)
+            self.assertFalse(path.exists())
+
     def test_read_only_not_private_state_and_symlink_are_rejected(self):
         sources, trust = signed_sources()
         a, b = envelopes(sources, trust)
@@ -262,6 +290,7 @@ class PersistenceTests(unittest.TestCase):
             safe = folder / "safe"
             safe.mkdir(mode=0o700)
             db_path = safe / "state.sqlite3"
+            DurableReplayStore(db_path).initialize()
             evaluate_durable_episodes(a, b, trust, db_path)
             if os.name == "posix":
                 db_path.chmod(0o644)
@@ -278,6 +307,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust)
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "shared.sqlite3"
+            DurableReplayStore(path).initialize()
             def submit():
                 try:
                     evaluate_durable_episodes(a, b, trust, path)
@@ -297,6 +327,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust)
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "sqlite.db"
+            DurableReplayStore(path).initialize()
             report = evaluate_durable_episodes(a, b, trust, path)
             output = json.dumps(report) + json.dumps(
                 DurableReplayStore(path).summary())
@@ -313,6 +344,7 @@ class PersistenceTests(unittest.TestCase):
         a, b = envelopes(sources, trust)
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "sqlite.db"
+            DurableReplayStore(path).initialize()
             evaluate_durable_episodes(a, b, trust, path)
             with contextlib.redirect_stdout(io.StringIO()) as buffer:
                 main(["attestation-revoke", "--state-db", str(path),
