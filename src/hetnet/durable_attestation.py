@@ -65,7 +65,7 @@ class DurableReplayStore:
             | getattr(os, "O_NOFOLLOW", 0), 0o600)
         os.close(fd)
         try:
-            db = self._connect()
+            db = self._connect(bootstrap=True)
             db.close()
         except BaseException:
             p.unlink(missing_ok=True)
@@ -79,7 +79,7 @@ class DurableReplayStore:
             ),
         }
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, bootstrap: bool = False) -> sqlite3.Connection:
         p = _private_db_path(self.path)
         if not p.exists():
             raise ValueError(
@@ -97,17 +97,32 @@ class DurableReplayStore:
             db.execute("PRAGMA busy_timeout=10000")
             db.execute("BEGIN IMMEDIATE")
             current = db.execute("PRAGMA user_version").fetchone()[0]
-            if current not in (0, 1):
-                raise ValueError("Unsupported durable-state schema version")
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS key_state ("
-                "key_id TEXT PRIMARY KEY NOT NULL, "
-                "source_id TEXT NOT NULL, lineage_id TEXT NOT NULL, "
-                "secret_sha256 TEXT NOT NULL, highest_sequence INTEGER NOT NULL "
-                "CHECK(highest_sequence >= 1), "
-                "revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))"
-            )
-            db.execute("PRAGMA user_version=1")
+            if bootstrap:
+                if current != 0:
+                    raise ValueError("Bootstrap requires a new empty SQLite database")
+                db.execute(
+                    "CREATE TABLE key_state ("
+                    "key_id TEXT PRIMARY KEY NOT NULL, "
+                    "source_id TEXT NOT NULL, lineage_id TEXT NOT NULL, "
+                    "secret_sha256 TEXT NOT NULL, highest_sequence INTEGER NOT NULL "
+                    "CHECK(highest_sequence >= 1), "
+                    "revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))"
+                )
+                db.execute("PRAGMA user_version=1")
+            elif current != 1:
+                raise ValueError(
+                    "Uninitialized or incompatible durable replay database; "
+                    "refusing implicit bootstrap"
+                )
+            else:
+                fields = {
+                    column[1] for column in db.execute("PRAGMA table_info(key_state)")
+                }
+                if fields != {
+                    "key_id", "source_id", "lineage_id", "secret_sha256",
+                    "highest_sequence", "revoked",
+                }:
+                    raise ValueError("Durable replay schema does not match expected fields")
             db.execute("COMMIT")
         except BaseException:
             db.rollback()
@@ -245,6 +260,8 @@ def evaluate_durable_episodes(
         train_envelopes, holdout_envelopes, trust)
     audits = report["attestation"]["verified_inputs"]
     state = DurableReplayStore(state_db).commit_verified_batch(audits, trust)
+    report["attestation"]["batch_replay_guard"] = (
+        "in-process signature preflight plus persistent SQLite monotonic sequence")
     report["durable_attestation"] = state
     report["durable_attestation"]["warning"] = (
         "HMAC authenticates trusted key-holder statements, NOT "
