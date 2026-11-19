@@ -169,6 +169,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Ephemeral synthetic signer + private temporary SQLite; no secrets exported")
     durable_demo.add_argument("--output", type=Path,
                               default=Path("results/durable-replay-demo"))
+    initializer = commands.add_parser(
+        "attestation-init-state",
+        help="Explicitly create a private EMPTY SQLite anti-replay state DB once")
+    initializer.add_argument("--state-db", type=Path, required=True,
+                             help="New DB in an existing private 0700 directory")
     durable = commands.add_parser(
         "durable-attested-eval",
         help="Verify signed aggregates with durable SQLite replay protection")
@@ -388,6 +393,12 @@ def main(argv: list[str] | None = None) -> None:
         }, ensure_ascii=False, indent=2))
         print("Exported synthetic durable demonstration to",
               args.output.resolve())
+    elif args.command == "attestation-init-state":
+        try:
+            report = DurableReplayStore(args.state_db).initialize()
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "durable-attested-eval":
         try:
             report = run_durable_eval(args.train, args.holdout,
