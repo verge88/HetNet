@@ -239,3 +239,93 @@ def run_durable_eval(
         [load_envelope(path) for path in holdout_paths],
         trust, state_db,
     )
+
+
+def synthetic_durable_demo() -> dict:
+    """Self-sign committed synthetic fixtures with ephemeral keys ONLY.
+
+    Demonstrate opening the same private SQLite DB repeatedly, rejecting
+    exact replay and a revoked key, and rotating to a distinct new key_id.
+    The private temporary DB and all ephemeral secrets are destroyed after
+    function return. Only nonsecret aggregate outcomes leave the function.
+    """
+    import secrets
+    import tempfile
+    from .aggregate_attestation import create_envelope
+    from .labeled_aggregates import load_labeled
+    from .temporal_episodes import load_episodic
+
+    examples = Path(__file__).resolve().parents[2] / "examples"
+    training = [load_labeled(examples / "labeled" /
+                             ("lab_clean_" + n + ".json"))
+                for n in ("alpha", "beta")]
+    holdout = [load_episodic(examples / "episodic" /
+                             ("episodic_holdout_" + n + ".json"))
+               for n in ("alpha", "beta", "gamma")]
+    all_data = [*training, *holdout]
+    trust: dict[str, TrustedIdentity] = {}
+    for i, data in enumerate(all_data):
+        trust["demo_key_" + str(i)] = TrustedIdentity(
+            data["source_id"], data["lineage_id"], secrets.token_bytes(32))
+
+    def envelopes(*, number: int, rotated: bool = False) -> list[dict]:
+        signed = []
+        from .aggregate_attestation import create_envelope
+        for i, data in enumerate(all_data):
+            key_id = ("demo_rotated_0" if i == 0 and rotated
+                      else "demo_key_" + str(i))
+            identity = trust[key_id]
+            signed.append(create_envelope(
+                data, key_id=key_id, sequence=1 if rotated and i == 0 else number,
+                secret=identity.secret))
+        return signed
+
+    with tempfile.TemporaryDirectory(prefix="hetnet-private-state-") as tmp:
+        state_db = Path(tmp) / "replay.sqlite3"
+        first = envelopes(number=1)
+        first_result = evaluate_durable_episodes(
+            first[:2], first[2:], trust, state_db)
+        replay_rejected = False
+        try:
+            evaluate_durable_episodes(first[:2], first[2:], trust, state_db)
+        except ValueError:
+            replay_rejected = True
+        if not replay_rejected:
+            raise AssertionError("Persistent replay demonstrator accepted replay")
+
+        old_key = "demo_key_0"
+        DurableReplayStore(state_db).revoke(old_key)
+        revoked_rejected = False
+        second = envelopes(number=2)
+        try:
+            evaluate_durable_episodes(second[:2], second[2:], trust, state_db)
+        except ValueError:
+            revoked_rejected = True
+        if not revoked_rejected:
+            raise AssertionError("Persistent revocation demonstrator failed")
+
+        first_source = all_data[0]
+        trust["demo_rotated_0"] = TrustedIdentity(
+            first_source["source_id"], first_source["lineage_id"],
+            secrets.token_bytes(32))
+        rotated = envelopes(number=2, rotated=True)
+        rotated_result = evaluate_durable_episodes(
+            rotated[:2], rotated[2:], trust, state_db)
+        observed = DurableReplayStore(state_db).summary()
+        return {
+            "self_signed_synthetic_demo": True,
+            "secret_and_state_db_exported": False,
+            "durable_reopen_replay_rejected": replay_rejected,
+            "revoked_key_rejected": revoked_rejected,
+            "new_key_id_rotation_succeeded": True,
+            "private_temp_database_discarded": True,
+            "initial_overall": first_result["overall"],
+            "rotated_overall": rotated_result["overall"],
+            "final_state": observed,
+            "limitations": [
+                "Only transient synthetic HMAC key owners were tested",
+                "Replay state lasted across connections to a temporary database",
+                "Deleting or rolling back the protected database defeats anti-replay",
+                "Not an external sensor provenance or expert-label attestation",
+            ],
+        }
