@@ -23,7 +23,7 @@ from .labeled_aggregates import run_labeled_eval, load_labeled, audit_labeled
 from .temporal_episodes import run_temporal_eval, load_episodic, audit_episodic
 from .aggregate_attestation import run_attested_eval, create_envelope, TrustedIdentity, evaluate_attested_episodes
 from .clock_sensitivity import run_clock_study
-from .durable_attestation import DurableReplayStore, run_durable_eval
+from .durable_attestation import DurableReplayStore, run_durable_eval, synthetic_durable_demo
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -164,6 +164,11 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    durable_demo = commands.add_parser(
+        "durable-replay-demo",
+        help="Ephemeral synthetic signer + private temporary SQLite; no secrets exported")
+    durable_demo.add_argument("--output", type=Path,
+                              default=Path("results/durable-replay-demo"))
     durable = commands.add_parser(
         "durable-attested-eval",
         help="Verify signed aggregates with durable SQLite replay protection")
@@ -370,6 +375,19 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "durable-replay-demo":
+        report = synthetic_durable_demo()
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "durable_replay_demo.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps({
+            key: report[key] for key in
+            ("self_signed_synthetic_demo", "durable_reopen_replay_rejected",
+             "revoked_key_rejected", "new_key_id_rotation_succeeded")
+        }, ensure_ascii=False, indent=2))
+        print("Exported synthetic durable demonstration to",
+              args.output.resolve())
     elif args.command == "durable-attested-eval":
         try:
             report = run_durable_eval(args.train, args.holdout,
