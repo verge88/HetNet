@@ -310,6 +310,7 @@ def synthetic_durable_demo() -> dict:
         trust["demo_rotated_0"] = TrustedIdentity(
             first_source["source_id"], first_source["lineage_id"],
             secrets.token_bytes(32))
+        del trust[old_key]  # Replace, do not retain duplicate source bindings.
         rotated = envelopes(number=2, rotated=True)
         rotated_result = evaluate_durable_episodes(
             rotated[:2], rotated[2:], trust, state_db)
