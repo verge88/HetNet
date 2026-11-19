@@ -162,8 +162,15 @@ jobs:
           name: hetnet-stage13-durable-replay
           path: results/stage13/
           if-no-files-found: error
-      - name: Stage 14 local studio HTTP and research view integration checks
+      - name: Stage 14 local studio HTTP and browser JavaScript checks
         if: matrix.python-version == '3.12'
         run: |
           python -m compileall -q src/hetnet
           python -m unittest discover -s tests -p 'test_research_stage14.py' -v
+          python - <<'PY'
+          from pathlib import Path
+          from hetnet.web_ui import HTML
+          source = HTML.split("<script>", 1)[1].split("</script>", 1)[0]
+          Path("/tmp/hetnet-studio.js").write_text(source, encoding="utf-8")
+          PY
+          node --check /tmp/hetnet-studio.js
