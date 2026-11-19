@@ -53,22 +53,44 @@ class DurableReplayStore:
     def __init__(self, path: Path):
         self.path = Path(path)
 
-    def _connect(self, *, create: bool = True) -> sqlite3.Connection:
+    def initialize(self) -> dict:
+        """One-time explicit creation; cannot silently reset replay counters."""
         p = _private_db_path(self.path)
-        if not create and not p.exists():
-            raise ValueError("Persistent attestation state database does not exist")
-        # Atomic private-file creation. Do NOT use os.umask: it is process-
-        # global and races with concurrent threads. Parent 0700 protects
-        # SQLite's temporary rollback journal as well.
+        if p.exists():
+            raise ValueError("Persistent replay DB already exists; refusing reset")
+        # O_EXCL establishes an explicit bootstrap boundary. No global umask
+        # mutations; parent 0700 protects SQLite's temporary rollback journal.
+        fd = os.open(
+            str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        os.close(fd)
         try:
-            fd = os.open(
-                str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        except FileExistsError:
-            _private_db_path(p)
-        else:
-            os.close(fd)
-        db = sqlite3.connect(str(p), timeout=10, isolation_level=None)
+            db = self._connect()
+            db.close()
+        except BaseException:
+            p.unlink(missing_ok=True)
+            raise
+        return {
+            "initialized": True,
+            "persistent_state": "private SQLite, empty, explicitly initialized",
+            "warning": (
+                "Protect this state from deletion and rollback. Initialization "
+                "does not make local backups tamper-resistant."
+            ),
+        }
+
+    def _connect(self) -> sqlite3.Connection:
+        p = _private_db_path(self.path)
+        if not p.exists():
+            raise ValueError(
+                "Persistent attestation state database does not exist; "
+                "initialize explicitly before importing"
+            )
+        # mode=rw is fail-closed if the DB is deleted between checking the
+        # path and opening it: SQLite MUST NOT silently recreate a new DB.
+        db = sqlite3.connect(
+            p.absolute().as_uri() + "?mode=rw", uri=True,
+            timeout=10, isolation_level=None)
         try:
             db.execute("PRAGMA trusted_schema=OFF")
             db.execute("PRAGMA journal_mode=DELETE")
@@ -168,7 +190,7 @@ class DurableReplayStore:
         """
         if not _slug(key_id):
             raise ValueError("Invalid key identifier")
-        db = self._connect(create=False)
+        db = self._connect()
         try:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -191,7 +213,7 @@ class DurableReplayStore:
             db.close()
 
     def summary(self) -> dict:
-        db = self._connect(create=False)
+        db = self._connect()
         try:
             rows = db.execute(
                 "SELECT key_id,source_id,lineage_id,highest_sequence,revoked "
@@ -284,6 +306,7 @@ def synthetic_durable_demo() -> dict:
 
     with tempfile.TemporaryDirectory(prefix="hetnet-private-state-") as tmp:
         state_db = Path(tmp) / "replay.sqlite3"
+        DurableReplayStore(state_db).initialize()
         first = envelopes(number=1)
         first_result = evaluate_durable_episodes(
             first[:2], first[2:], trust, state_db)
