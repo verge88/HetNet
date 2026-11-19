@@ -139,3 +139,15 @@ jobs:
           name: hetnet-stage11-onset-episodes
           path: results/stage11/
           if-no-files-found: error
+      - name: Stage 12 ephemeral HMAC self-attestation and clock-bin robustness
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet attestation-demo --output results/stage12/attestation-demo
+          python -m hetnet clock-study --train examples/labeled/lab_clean_alpha.json examples/labeled/lab_clean_beta.json --holdout examples/episodic/episodic_holdout_alpha.json examples/episodic/episodic_holdout_beta.json examples/episodic/episodic_holdout_gamma.json --output results/stage12/clock-study
+      - name: Archive stage 12 aggregate-only metrics (never attestation keys)
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage12-attestation-clock
+          path: results/stage12/
+          if-no-files-found: error

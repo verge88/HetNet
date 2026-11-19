@@ -21,6 +21,8 @@ from .external_aggregates import (run_external_eval, load_dataset,
 from .zonal_detection import heldout_comparison
 from .labeled_aggregates import run_labeled_eval, load_labeled, audit_labeled
 from .temporal_episodes import run_temporal_eval, load_episodic, audit_episodic
+from .aggregate_attestation import run_attested_eval, create_envelope, TrustedIdentity, evaluate_attested_episodes
+from .clock_sensitivity import run_clock_study
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -161,6 +163,29 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    attested = commands.add_parser(
+        "attested-episode-eval",
+        help="Verify source-bound HMAC aggregate envelopes before episode evaluation")
+    attested.add_argument("--train", type=Path, nargs="+", required=True,
+                          help="Signed version-1 clean-source envelope files")
+    attested.add_argument("--holdout", type=Path, nargs="+", required=True,
+                          help="Signed version-2 episodic-source envelope files")
+    attested.add_argument("--trust-config", type=Path, required=True,
+                          help="Private 0600 local HMAC trust-policy file; never commit")
+    attested.add_argument("--output", type=Path,
+                          default=Path("results/attested-episodes"))
+    demo_attest = commands.add_parser(
+        "attestation-demo",
+        help="Self-sign synthetic fixtures IN MEMORY using ephemeral keys; not provenance proof")
+    demo_attest.add_argument("--output", type=Path,
+                             default=Path("results/attestation-demo"))
+    clock = commands.add_parser(
+        "clock-study",
+        help="Synthetic relative-clock-bin offset study on onset-blind episode rules")
+    clock.add_argument("--train", type=Path, nargs="+", required=True)
+    clock.add_argument("--holdout", type=Path, nargs="+", required=True)
+    clock.add_argument("--output", type=Path,
+                       default=Path("results/clock-study"))
     episode_audit = commands.add_parser(
         "episode-audit", help="Validate a privacy-restricted temporal annotated source")
     episode_audit.add_argument("--input", type=Path, required=True)
@@ -327,6 +352,62 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "attested-episode-eval":
+        try:
+            report = run_attested_eval(args.train, args.holdout,
+                                       args.trust_config)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "attested_episode_comparison.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(report["overall"], ensure_ascii=False, indent=2))
+        print("Exported verified-envelope comparison to", args.output.resolve())
+    elif args.command == "attestation-demo":
+        # Intentionally self-attests generated synthetic examples in memory.
+        # This shows HMAC envelope mechanics, NOT external provenance.
+        import secrets
+        examples = Path(__file__).resolve().parents[2] / "examples"
+        train_paths = [examples / "labeled" / f"lab_clean_{name}.json"
+                       for name in ("alpha", "beta")]
+        holdout_paths = [
+            examples / "episodic" / f"episodic_holdout_{name}.json"
+            for name in ("alpha", "beta", "gamma")]
+        trusted = {}
+        train_env, holdout_env = [], []
+        for idx, source in enumerate(
+            [*[load_labeled(p) for p in train_paths],
+             *[load_episodic(p) for p in holdout_paths]]
+        ):
+            kid = f"demo_key_{idx}"
+            secret = secrets.token_bytes(32)
+            trusted[kid] = TrustedIdentity(
+                source["source_id"], source["lineage_id"], secret)
+            envelope = create_envelope(
+                source, key_id=kid, sequence=1, secret=secret)
+            (train_env if idx < len(train_paths) else holdout_env).append(envelope)
+        report = evaluate_attested_episodes(train_env, holdout_env, trusted)
+        report["attestation"]["self_signed_synthetic_demo"] = True
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "attestation_demo.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(report["overall"], ensure_ascii=False, indent=2))
+        print("Exported self-attested SYNTHETIC demo to", args.output.resolve())
+    elif args.command == "clock-study":
+        try:
+            report = run_clock_study(args.train, args.holdout)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "clock_study.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(
+            [{"case": case["case"], "overall": case["overall"]}
+             for case in report["cases"]], ensure_ascii=False, indent=2))
+        print("Exported clock-bin sensitivity to", args.output.resolve())
     elif args.command == "episode-audit":
         try:
             summary = audit_episodic(load_episodic(args.input))
