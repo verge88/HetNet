@@ -55,14 +55,18 @@ class DurableReplayStore:
 
     def _connect(self) -> sqlite3.Connection:
         p = _private_db_path(self.path)
-        # sqlite3 creates 0666 & umask; set 077 before opening to ensure
-        # private DB and short-lived SQLite rollback journal files.
-        original = os.umask(0o077) if os.name == "posix" else None
+        # Atomic private-file creation. Do NOT use os.umask: it is process-
+        # global and races with concurrent threads. Parent 0700 protects
+        # SQLite's temporary rollback journal as well.
         try:
-            db = sqlite3.connect(str(p), timeout=10, isolation_level=None)
-        finally:
-            if original is not None:
-                os.umask(original)
+            fd = os.open(
+                str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except FileExistsError:
+            _private_db_path(p)
+        else:
+            os.close(fd)
+        db = sqlite3.connect(str(p), timeout=10, isolation_level=None)
         try:
             db.execute("PRAGMA trusted_schema=OFF")
             db.execute("PRAGMA journal_mode=DELETE")
