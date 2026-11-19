@@ -99,14 +99,22 @@ class ResearchStudyTests(unittest.TestCase):
                 self.assertTrue(report["rows"])
                 self.assertTrue(all(row["label"] for row in report["rows"]))
                 self.assertEqual(json.loads(json.dumps(report)), report)
-                serialized = json.dumps(report)
-                for forbidden in (
-                    '"measurements"', '"episodes"', '"attack_label"',
-                    '"secret_b64"', '"mac_sha256"',
-                    '"reference_count"', '"reported_count"',
-                    '"source_id"', '"lineage_id"',
-                ):
-                    self.assertNotIn(forbidden, serialized)
+                # Inspect JSON FIELD NAMES, not text values: the study ID
+                # "episodes" is harmless and must remain usable in the UI.
+                def keys(value):
+                    if isinstance(value, dict):
+                        return set(value) | set().union(
+                            *(keys(x) for x in value.values()))
+                    if isinstance(value, list):
+                        return set().union(*(keys(x) for x in value))
+                    return set()
+
+                forbidden = {
+                    "measurements", "episodes", "attack_label", "secret_b64",
+                    "mac_sha256", "reference_count", "reported_count",
+                    "source_id", "lineage_id",
+                }
+                self.assertFalse(keys(report) & forbidden)
                 self.assertTrue(any("синтетичес" in x.lower()
                                     for x in report["limitations"]))
 
