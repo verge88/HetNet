@@ -7,10 +7,10 @@
 ## CI и тесты
 
 Успешный GitHub Actions:
-https://github.com/verge88/HetNet/actions/runs/44496010455
+https://github.com/verge88/HetNet/actions/runs/44496500494
 
 На Python 3.10 и 3.12 успешно выполнено
-**222 unit/integration теста**. Дополнительный
+**223 unit/integration теста**. Дополнительный
 шаг Python 3.12 выполнил синтетическую
 демонстрацию durable-replay-demo и
 архивировал результаты
@@ -47,6 +47,9 @@ hetnet-stage13-durable-replay без приватных ключей.
   никогда не созданной БД, вместо
   автоматического создания пустого
   доверенного состояния;
+- отказ, если кто-либо подставил пустой
+  SQLite-файл или указал schema version 1
+  без ожидаемой таблицы состояния;
 - приватные права доступа к состоянию
   (каталог 0700, SQLite-файл 0600 на POSIX),
   запрет symlink/hardlink;
