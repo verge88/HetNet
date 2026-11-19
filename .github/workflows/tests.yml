@@ -151,3 +151,14 @@ jobs:
           name: hetnet-stage12-attestation-clock
           path: results/stage12/
           if-no-files-found: error
+      - name: Stage 13 private durable replay and revoked-key rotation demonstration
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m hetnet durable-replay-demo --output results/stage13/durable-demo
+      - name: Archive stage 13 nonsecret state demonstration
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hetnet-stage13-durable-replay
+          path: results/stage13/
+          if-no-files-found: error
