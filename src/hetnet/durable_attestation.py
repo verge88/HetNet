@@ -53,8 +53,10 @@ class DurableReplayStore:
     def __init__(self, path: Path):
         self.path = Path(path)
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, create: bool = True) -> sqlite3.Connection:
         p = _private_db_path(self.path)
+        if not create and not p.exists():
+            raise ValueError("Persistent attestation state database does not exist")
         # Atomic private-file creation. Do NOT use os.umask: it is process-
         # global and races with concurrent threads. Parent 0700 protects
         # SQLite's temporary rollback journal as well.
@@ -166,7 +168,7 @@ class DurableReplayStore:
         """
         if not _slug(key_id):
             raise ValueError("Invalid key identifier")
-        db = self._connect()
+        db = self._connect(create=False)
         try:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -189,7 +191,7 @@ class DurableReplayStore:
             db.close()
 
     def summary(self) -> dict:
-        db = self._connect()
+        db = self._connect(create=False)
         try:
             rows = db.execute(
                 "SELECT key_id,source_id,lineage_id,highest_sequence,revoked "
