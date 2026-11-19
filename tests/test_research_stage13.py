@@ -322,6 +322,39 @@ class PersistenceTests(unittest.TestCase):
                 sum("replay" in item for item in outcomes), 1)
             self.assertEqual(len(DurableReplayStore(path).summary()["keys"]), 5)
 
+    def test_simultaneous_subprocesses_one_rejected_by_sqlite_lock(self):
+        sources, trust = signed_sources()
+        train, holdout = envelopes(sources, trust)
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root)
+            policy = save_policy(folder, trust)
+            files = []
+            for i, env in enumerate([*train, *holdout]):
+                p = folder / ("source_" + str(i) + ".json")
+                p.write_text(json.dumps(env), encoding="utf-8")
+                files.append(p)
+            db = folder / "state.sqlite3"
+            DurableReplayStore(db).initialize()
+            common = [
+                sys.executable, "-m", "hetnet", "durable-attested-eval",
+                "--train", *map(str, files[:2]),
+                "--holdout", *map(str, files[2:]),
+                "--trust-config", str(policy), "--state-db", str(db),
+            ]
+            children = [
+                subprocess.Popen(common + ["--output", str(folder / ("result_" + str(i)))],
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+                for i in range(2)
+            ]
+            results = [child.communicate(timeout=20) for child in children]
+            codes = [child.returncode for child in children]
+            self.assertEqual(codes.count(0), 1, (codes, results))
+            self.assertEqual(sum("replay" in stderr.lower() for _, stderr
+                                 in results), 1, results)
+            self.assertTrue(all(x["highest_sequence"] == 1 for x in
+                                DurableReplayStore(db).summary()["keys"]))
+
     def test_export_and_state_reports_never_contain_secret_or_raw_rows(self):
         sources, trust = signed_sources()
         a, b = envelopes(sources, trust)
