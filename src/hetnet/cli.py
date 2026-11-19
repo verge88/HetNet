@@ -23,6 +23,7 @@ from .labeled_aggregates import run_labeled_eval, load_labeled, audit_labeled
 from .temporal_episodes import run_temporal_eval, load_episodic, audit_episodic
 from .aggregate_attestation import run_attested_eval, create_envelope, TrustedIdentity, evaluate_attested_episodes
 from .clock_sensitivity import run_clock_study
+from .durable_attestation import DurableReplayStore, run_durable_eval, synthetic_durable_demo
 from .fault_domains import FAULT_CASES, MONITORED_NODES
 from .wire import DecodeError, MAX_INPUT, PARSERS, inspect_wire
 
@@ -163,6 +164,33 @@ def main(argv: list[str] | None = None) -> None:
     stress.add_argument("--loss-rates", default="0,0.03,0.1")
     stress.add_argument("--test-runs", type=int, default=3)
     stress.add_argument("--output", type=Path, default=Path("results/stress"))
+    durable_demo = commands.add_parser(
+        "durable-replay-demo",
+        help="Ephemeral synthetic signer + private temporary SQLite; no secrets exported")
+    durable_demo.add_argument("--output", type=Path,
+                              default=Path("results/durable-replay-demo"))
+    initializer = commands.add_parser(
+        "attestation-init-state",
+        help="Explicitly create a private EMPTY SQLite anti-replay state DB once")
+    initializer.add_argument("--state-db", type=Path, required=True,
+                             help="New DB in an existing private 0700 directory")
+    durable = commands.add_parser(
+        "durable-attested-eval",
+        help="Verify signed aggregates with durable SQLite replay protection")
+    durable.add_argument("--train", type=Path, nargs="+", required=True)
+    durable.add_argument("--holdout", type=Path, nargs="+", required=True)
+    durable.add_argument("--trust-config", type=Path, required=True)
+    durable.add_argument("--state-db", type=Path, required=True,
+                         help="Persistent private SQLite database in a 0700 directory")
+    durable.add_argument("--output", type=Path,
+                         default=Path("results/durable-attested-episodes"))
+    revoke = commands.add_parser(
+        "attestation-revoke", help="Permanently revoke an admitted key ID in a local state DB")
+    revoke.add_argument("--state-db", type=Path, required=True)
+    revoke.add_argument("--key-id", required=True)
+    status = commands.add_parser(
+        "attestation-state", help="Display nonsecret accepted-key and revocation state")
+    status.add_argument("--state-db", type=Path, required=True)
     attested = commands.add_parser(
         "attested-episode-eval",
         help="Verify source-bound HMAC aggregate envelopes before episode evaluation")
@@ -352,6 +380,49 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8")
         print(json.dumps(result["conditions"], ensure_ascii=False, indent=2))
         print("Exported benign stress to", args.output.resolve())
+    elif args.command == "durable-replay-demo":
+        report = synthetic_durable_demo()
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "durable_replay_demo.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps({
+            key: report[key] for key in
+            ("self_signed_synthetic_demo", "durable_reopen_replay_rejected",
+             "revoked_key_rejected", "new_key_id_rotation_succeeded")
+        }, ensure_ascii=False, indent=2))
+        print("Exported synthetic durable demonstration to",
+              args.output.resolve())
+    elif args.command == "attestation-init-state":
+        try:
+            report = DurableReplayStore(args.state_db).initialize()
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif args.command == "durable-attested-eval":
+        try:
+            report = run_durable_eval(args.train, args.holdout,
+                                      args.trust_config, args.state_db)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "durable_attested_comparison.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        print(json.dumps(report["overall"], ensure_ascii=False, indent=2))
+        print("Committed durable replay state; export to", args.output.resolve())
+    elif args.command == "attestation-revoke":
+        try:
+            report = DurableReplayStore(args.state_db).revoke(args.key_id)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif args.command == "attestation-state":
+        try:
+            report = DurableReplayStore(args.state_db).summary()
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "attested-episode-eval":
         try:
             report = run_attested_eval(args.train, args.holdout,

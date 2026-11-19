@@ -448,3 +448,65 @@ HMAC-SHA256, который связывает полный агрегат
 Открытые эксперименты по-прежнему
 синтетические, 3GPP/ITU-T conformance
 не подтверждался.
+
+
+## Этап 13 — долговременный anti-replay и отзыв аттестационных ключей
+
+На этапе 12 защита подписанного агрегата от повтора
+действовала лишь в текущем процессе. Добавлен
+**локальный закрытый SQLite-журнал**, который
+сохраняет наибольший sequence для key_id,
+источник/lineage привязки, отпечаток ключа
+и необратимое состояние отзыва. Для нескольких
+подписанных входов используется одна атомарная
+транзакция; ошибка в одном источнике откатывает
+изменения всей партии.
+
+    # СОЗДАТЬ ОДИН РАЗ защищённый каталог и пустую БД
+    install -d -m 700 /private/hetnet-state
+    python -m hetnet attestation-init-state \
+      --state-db /private/hetnet-state/attest.sqlite3
+
+    # Использовать локальные подписанные, разрешённые данные
+    python -m hetnet durable-attested-eval \
+      --train /private/data/train-one.envelope.json \
+              /private/data/train-two.envelope.json \
+      --holdout /private/data/test-one.envelope.json \
+      --trust-config /private/keys/hetnet-trust.json \
+      --state-db /private/hetnet-state/attest.sqlite3 \
+      --output /private/results
+
+    # Статус и отзыв существующего key ID
+    python -m hetnet attestation-state \
+      --state-db /private/hetnet-state/attest.sqlite3
+    python -m hetnet attestation-revoke \
+      --state-db /private/hetnet-state/attest.sqlite3 \
+      --key-id sensor_lab_one
+
+    # Безопасная лабораторная демонстрация
+    # исключительно на синтетических данных
+    python -m hetnet durable-replay-demo \
+      --output results/stage13/durable-demo
+
+В демонстрации одноразовые ключи генерируются
+в памяти, а приватный файл SQLite создаётся
+во временном каталоге и удаляется после
+эксперимента. Показываются отказ в точном
+повторе после повторного открытия БД,
+долговременный отзыв и приём нового
+ключа **только с новым key_id**. Никакие
+приватные ключи и исходные строки агрегатов
+не сохраняются в GitHub Actions артефакте.
+
+**[Методика и порядок инициализации](docs/validation-stage13.md)** ·
+**[Результаты проверок](docs/results-stage13.md)**.
+
+**Ограничение:** база не имеет аппаратной защиты
+от отката или подмены файла. Удаление базы
+вызовет отказ импорта, но восстановление
+устаревшего backup нельзя распознать без
+независимого защищённого журнала. HMAC не
+подтверждает правильность данных и
+идентичность физических датчиков.
+Все открытые испытания синтетические,
+полный 3GPP Release 18 conformance не заявлен.

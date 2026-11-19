@@ -1,0 +1,374 @@
+"""Durable, local anti-replay state and irreversible key-id revocation.
+
+SQLite BEGIN IMMEDIATE serializes competing writers. Sequences are committed
+only after *all* HMACs, identity bindings and scientific input constraints pass.
+
+Security boundary: the database, its private directory and local trust file
+must be protected by the host. A filesystem rollback, DB deletion, backup
+restore, compromised trusted signer, or signer re-signing old measurements
+with a *new* sequence is NOT detected. No HSM/PKI/secure timestamp exists.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+import sqlite3
+import stat
+from typing import Any
+
+from .aggregate_attestation import (
+    TrustedIdentity, evaluate_attested_episodes, load_envelope, load_trust_file,
+)
+from .labeled_aggregates import _slug
+
+
+def _private_db_path(path: Path) -> Path:
+    p = Path(path)
+    if not p.name or not p.parent.is_dir() or p.is_symlink():
+        raise ValueError("State database parent must exist; symlinks are disallowed")
+    if os.name == "posix":
+        parent_mode = stat.S_IMODE(p.parent.stat().st_mode)
+        if parent_mode & 0o077:
+            raise ValueError("State database parent must be private (0700)")
+    if p.exists():
+        if not p.is_file() or p.is_symlink():
+            raise ValueError("State database must be a regular non-symlink file")
+        info = p.stat()
+        if info.st_nlink != 1:
+            raise ValueError("State database hard links are not supported")
+        if os.name == "posix" and stat.S_IMODE(info.st_mode) & 0o077:
+            raise ValueError("State database file must be private (0600)")
+    return p
+
+
+class DurableReplayStore:
+    """One protected SQLite database for monotonic key counters and revocations.
+
+    Transactions cover the ENTIRE envelope batch, so a failed signature,
+    bad scientific sample, replay or revoked key does not consume any
+    sequence. The caller must maintain the DB across process restarts.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def initialize(self) -> dict:
+        """One-time explicit creation; cannot silently reset replay counters."""
+        p = _private_db_path(self.path)
+        if p.exists():
+            raise ValueError("Persistent replay DB already exists; refusing reset")
+        # O_EXCL establishes an explicit bootstrap boundary. No global umask
+        # mutations; parent 0700 protects SQLite's temporary rollback journal.
+        fd = os.open(
+            str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        os.close(fd)
+        try:
+            db = self._connect(bootstrap=True)
+            db.close()
+        except BaseException:
+            p.unlink(missing_ok=True)
+            raise
+        return {
+            "initialized": True,
+            "persistent_state": "private SQLite, empty, explicitly initialized",
+            "warning": (
+                "Protect this state from deletion and rollback. Initialization "
+                "does not make local backups tamper-resistant."
+            ),
+        }
+
+    def _connect(self, *, bootstrap: bool = False) -> sqlite3.Connection:
+        p = _private_db_path(self.path)
+        if not p.exists():
+            raise ValueError(
+                "Persistent attestation state database does not exist; "
+                "initialize explicitly before importing"
+            )
+        # mode=rw is fail-closed if the DB is deleted between checking the
+        # path and opening it: SQLite MUST NOT silently recreate a new DB.
+        db = sqlite3.connect(
+            p.absolute().as_uri() + "?mode=rw", uri=True,
+            timeout=10, isolation_level=None)
+        try:
+            db.execute("PRAGMA trusted_schema=OFF")
+            db.execute("PRAGMA journal_mode=DELETE")
+            db.execute("PRAGMA busy_timeout=10000")
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute("PRAGMA user_version").fetchone()[0]
+            if bootstrap:
+                if current != 0:
+                    raise ValueError("Bootstrap requires a new empty SQLite database")
+                db.execute(
+                    "CREATE TABLE key_state ("
+                    "key_id TEXT PRIMARY KEY NOT NULL, "
+                    "source_id TEXT NOT NULL, lineage_id TEXT NOT NULL, "
+                    "secret_sha256 TEXT NOT NULL, highest_sequence INTEGER NOT NULL "
+                    "CHECK(highest_sequence >= 1), "
+                    "revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))"
+                )
+                db.execute("PRAGMA user_version=1")
+            elif current != 1:
+                raise ValueError(
+                    "Uninitialized or incompatible durable replay database; "
+                    "refusing implicit bootstrap"
+                )
+            else:
+                fields = {
+                    column[1] for column in db.execute("PRAGMA table_info(key_state)")
+                }
+                if fields != {
+                    "key_id", "source_id", "lineage_id", "secret_sha256",
+                    "highest_sequence", "revoked",
+                }:
+                    raise ValueError("Durable replay schema does not match expected fields")
+            db.execute("COMMIT")
+        except BaseException:
+            db.rollback()
+            db.close()
+            raise
+        return db
+
+    def commit_verified_batch(
+        self, audits: list[dict[str, Any]],
+        trust: dict[str, TrustedIdentity],
+    ) -> dict:
+        """Atomic persistent acceptance of previously verified signed audits.
+
+        Use via evaluate_durable_episodes(): calling this with unauthenticated
+        audits directly is unsafe; the method does not validate HMAC bytes.
+        """
+        if not audits:
+            raise ValueError("Verified batch cannot be empty")
+        db = self._connect()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            for audit in audits:
+                key_id = audit["key_id"]
+                sequence = audit["sequence"]
+                identity = trust.get(key_id)
+                if (not isinstance(identity, TrustedIdentity)
+                        or audit.get("hmac_verified") is not True
+                        or audit["source_id"] != identity.source_id
+                        or audit["lineage_id"] != identity.lineage_id
+                        or type(sequence) is not int or sequence < 1):
+                    raise ValueError("Untrusted or malformed verified audit")
+                fp = hashlib.sha256(identity.secret).hexdigest()
+                state = db.execute(
+                    "SELECT source_id, lineage_id, secret_sha256, "
+                    "highest_sequence, revoked FROM key_state WHERE key_id=?",
+                    (key_id,),
+                ).fetchone()
+                if state is not None:
+                    if state[4]:
+                        raise ValueError("Attestation key revoked: " + key_id)
+                    if (state[0], state[1], state[2]) != (
+                            identity.source_id, identity.lineage_id, fp):
+                        raise ValueError("Attestation key identity changed; rotate key_id")
+                    if sequence <= state[3]:
+                        raise ValueError("Persistent attestation replay/out-of-order")
+                    db.execute(
+                        "UPDATE key_state SET highest_sequence=? WHERE key_id=?",
+                        (sequence, key_id),
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO key_state "
+                        "(key_id,source_id,lineage_id,secret_sha256,highest_sequence,revoked) "
+                        "VALUES (?,?,?,?,?,0)",
+                        (key_id, identity.source_id, identity.lineage_id,
+                         fp, sequence),
+                    )
+            db.execute("COMMIT")
+            return {
+                "database": "local SQLite, private file",
+                "verified_envelopes_committed": len(audits),
+                "atomic_batch_committed": True,
+                "persistent_replay": "strict monotonic sequence per key ID",
+                "key_binding": "source, lineage, and secret fingerprint cannot change",
+                "rollback_warning": (
+                    "Database deletion or restoration from old backup defeats "
+                    "durable anti-replay without external monotonic storage"
+                ),
+            }
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def revoke(self, key_id: str) -> dict:
+        """Persistently reject all future uses of this already admitted key ID.
+
+        There is intentionally no un-revoke operation; rotate to a NEW key ID.
+        """
+        if not _slug(key_id):
+            raise ValueError("Invalid key identifier")
+        db = self._connect()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT revoked FROM key_state WHERE key_id=?", (key_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError("Cannot revoke an unknown key ID")
+            if row[0]:
+                raise ValueError("Key ID already revoked")
+            db.execute(
+                "UPDATE key_state SET revoked=1 WHERE key_id=?", (key_id,)
+            )
+            db.execute("COMMIT")
+            return {"key_id": key_id, "revoked": True,
+                    "rotation_instruction": "Issue distinct key ID and new secret"}
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def summary(self) -> dict:
+        db = self._connect()
+        try:
+            rows = db.execute(
+                "SELECT key_id,source_id,lineage_id,highest_sequence,revoked "
+                "FROM key_state ORDER BY key_id"
+            ).fetchall()
+            return {
+                "keys": [{
+                    "key_id": row[0], "source_id": row[1],
+                    "lineage_id": row[2], "highest_sequence": row[3],
+                    "revoked": bool(row[4]),
+                } for row in rows],
+                "warning": (
+                    "Local writable database only; no signed history, "
+                    "rollback resistance or global cross-site consensus"
+                ),
+            }
+        finally:
+            db.close()
+
+
+def evaluate_durable_episodes(
+    train_envelopes: list[dict], holdout_envelopes: list[dict],
+    trust: dict[str, TrustedIdentity], state_db: Path,
+) -> dict:
+    """Verify all sources, fit clean-only, then atomically consume sequences."""
+    # Stage 12 checks *all* signatures and batch replay, and Stage 11 checks
+    # clean-only training, label split, and duplicate capture before DB writes.
+    report = evaluate_attested_episodes(
+        train_envelopes, holdout_envelopes, trust)
+    audits = report["attestation"]["verified_inputs"]
+    state = DurableReplayStore(state_db).commit_verified_batch(audits, trust)
+    report["attestation"]["batch_replay_guard"] = (
+        "in-process signature preflight plus persistent SQLite monotonic sequence")
+    report["durable_attestation"] = state
+    report["durable_attestation"]["warning"] = (
+        "HMAC authenticates trusted key-holder statements, NOT "
+        "sensor physics, truthful labels or externally verified provenance"
+    )
+    return report
+
+
+def run_durable_eval(
+    train_paths: list[Path], holdout_paths: list[Path],
+    trust_path: Path, state_db: Path,
+) -> dict:
+    trust = load_trust_file(trust_path)
+    return evaluate_durable_episodes(
+        [load_envelope(path) for path in train_paths],
+        [load_envelope(path) for path in holdout_paths],
+        trust, state_db,
+    )
+
+
+def synthetic_durable_demo() -> dict:
+    """Self-sign committed synthetic fixtures with ephemeral keys ONLY.
+
+    Demonstrate opening the same private SQLite DB repeatedly, rejecting
+    exact replay and a revoked key, and rotating to a distinct new key_id.
+    The private temporary DB and all ephemeral secrets are destroyed after
+    function return. Only nonsecret aggregate outcomes leave the function.
+    """
+    import secrets
+    import tempfile
+    from .aggregate_attestation import create_envelope
+    from .labeled_aggregates import load_labeled
+    from .temporal_episodes import load_episodic
+
+    examples = Path(__file__).resolve().parents[2] / "examples"
+    training = [load_labeled(examples / "labeled" /
+                             ("lab_clean_" + n + ".json"))
+                for n in ("alpha", "beta")]
+    holdout = [load_episodic(examples / "episodic" /
+                             ("episodic_holdout_" + n + ".json"))
+               for n in ("alpha", "beta", "gamma")]
+    all_data = [*training, *holdout]
+    trust: dict[str, TrustedIdentity] = {}
+    for i, data in enumerate(all_data):
+        trust["demo_key_" + str(i)] = TrustedIdentity(
+            data["source_id"], data["lineage_id"], secrets.token_bytes(32))
+
+    def envelopes(*, number: int, rotated: bool = False) -> list[dict]:
+        signed = []
+        from .aggregate_attestation import create_envelope
+        for i, data in enumerate(all_data):
+            key_id = ("demo_rotated_0" if i == 0 and rotated
+                      else "demo_key_" + str(i))
+            identity = trust[key_id]
+            signed.append(create_envelope(
+                data, key_id=key_id, sequence=1 if rotated and i == 0 else number,
+                secret=identity.secret))
+        return signed
+
+    with tempfile.TemporaryDirectory(prefix="hetnet-private-state-") as tmp:
+        state_db = Path(tmp) / "replay.sqlite3"
+        DurableReplayStore(state_db).initialize()
+        first = envelopes(number=1)
+        first_result = evaluate_durable_episodes(
+            first[:2], first[2:], trust, state_db)
+        replay_rejected = False
+        try:
+            evaluate_durable_episodes(first[:2], first[2:], trust, state_db)
+        except ValueError:
+            replay_rejected = True
+        if not replay_rejected:
+            raise AssertionError("Persistent replay demonstrator accepted replay")
+
+        old_key = "demo_key_0"
+        DurableReplayStore(state_db).revoke(old_key)
+        revoked_rejected = False
+        second = envelopes(number=2)
+        try:
+            evaluate_durable_episodes(second[:2], second[2:], trust, state_db)
+        except ValueError:
+            revoked_rejected = True
+        if not revoked_rejected:
+            raise AssertionError("Persistent revocation demonstrator failed")
+
+        first_source = all_data[0]
+        trust["demo_rotated_0"] = TrustedIdentity(
+            first_source["source_id"], first_source["lineage_id"],
+            secrets.token_bytes(32))
+        del trust[old_key]  # Replace, do not retain duplicate source bindings.
+        rotated = envelopes(number=2, rotated=True)
+        rotated_result = evaluate_durable_episodes(
+            rotated[:2], rotated[2:], trust, state_db)
+        observed = DurableReplayStore(state_db).summary()
+        return {
+            "self_signed_synthetic_demo": True,
+            "secret_and_state_db_exported": False,
+            "durable_reopen_replay_rejected": replay_rejected,
+            "revoked_key_rejected": revoked_rejected,
+            "new_key_id_rotation_succeeded": True,
+            "private_temp_database_discarded": True,
+            "initial_overall": first_result["overall"],
+            "rotated_overall": rotated_result["overall"],
+            "final_state": observed,
+            "limitations": [
+                "Only transient synthetic HMAC key owners were tested",
+                "Replay state lasted across connections to a temporary database",
+                "Deleting or rolling back the protected database defeats anti-replay",
+                "Not an external sensor provenance or expert-label attestation",
+            ],
+        }
