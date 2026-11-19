@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -275,6 +276,21 @@ class PersistenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "does not exist"):
                 evaluate_durable_episodes(a, b, trust, path)
             self.assertFalse(path.exists())
+
+    def test_empty_or_forged_schema_database_is_not_auto_initialized(self):
+        sources, trust = signed_sources()
+        a, b = envelopes(sources, trust)
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root) / "replaced.sqlite3"
+            with sqlite3.connect(str(p)) as db:
+                db.execute("PRAGMA user_version=0")
+            p.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, "Uninitialized"):
+                evaluate_durable_episodes(a, b, trust, p)
+            with sqlite3.connect(str(p)) as db:
+                db.execute("PRAGMA user_version=1")
+            with self.assertRaisesRegex(ValueError, "schema does not match"):
+                evaluate_durable_episodes(a, b, trust, p)
 
     def test_read_only_not_private_state_and_symlink_are_rejected(self):
         sources, trust = signed_sources()
